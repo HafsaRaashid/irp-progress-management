@@ -100,6 +100,21 @@ Body: { score: number (0-100), feedback: string, countsTowardEvaluation: boolean
 fields on its existing `Entry` schema — no new read endpoint, since mentors already receive
 entries through this response on the review page.
 
+**Correction caught in review, before implementation: `toApiEntry`/`toApiDay`
+(`apps/api/src/routes/me-days.ts`) is currently one shared mapping function used by *both*
+`GET /api/v1/students/{id}/days` (mentor, via `reviews.ts`) and `GET /api/v1/me/days` (student).**
+Adding `score` directly to the shared `Entry` schema would leak it to students through `/me/days`,
+violating "no student-visible score" (§6). This spec therefore splits the mapping in two:
+`toApiEntry` (mentor-facing, unchanged name, gains all three new fields) for
+`/students/{id}/days`, and a new `toApiEntryForStudent` (existing fields only — `score`,
+`countsTowardEvaluation` withheld) for `/me/days`. This mirrors the existing precedent one layer
+up: `DaySummary` already deliberately withholds the mentor's own `MentorDayRecord` fields from
+students for exactly this reason (see the doc-comment in `review/[studentId]/page.tsx`). Two
+OpenAPI schemas result — `Entry` (mentor) and a new `StudentEntry` (everything `Entry` has except
+`score`/`countsTowardEvaluation`) — rather than one schema with fields a student's response is
+trusted to simply omit at the call site, which is exactly the kind of trust-the-caller mistake
+that produces a leak the moment someone adds a new caller.
+
 ## 5. Web surface
 
 `apps/web/app/(app)/review/[studentId]/page.tsx` already lists each day's entries (via
@@ -128,7 +143,8 @@ forward, not reopened, and will be stated again in that spec.
 | Unit | Rejects a review write on an entry whose day is `EVALUATED` with the existing `LockedDayError`/409 |
 | Unit | `countsTowardEvaluation` defaults `false` on entry creation and stays `false` until explicitly set `true` in a review write |
 | Unit | Re-reviewing an entry (calling PUT again before Evaluated) fully replaces score/feedback/flag, not merges |
-| Unit | `GET /students/:id/days` returns the three new fields on each entry |
+| Unit | `GET /students/:id/days` (mentor) returns the three new fields on each entry |
+| Unit | `GET /me/days` (student) returns entries with `score` and `countsTowardEvaluation` absent, not merely null |
 | Integration | Full flow: student submits entry → mentor transitions day to InReview → mentor reviews (scores) the entry → mentor transitions day to Evaluated → a further review attempt 409s |
 | E2E | Mentor review page: score/feedback/checkbox controls appear per entry, submit, and persist on reload |
 
