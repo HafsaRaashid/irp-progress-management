@@ -425,10 +425,21 @@ Not oversights. Each is a recorded decision with a trigger for revisiting.
 
 `/signin` is rendered `force-dynamic` (a Task 7 fix — an earlier version was statically prerendered,
 which would have baked the "not configured" panel into a static HTML file that a later env-var change
-could not update). Enabling Entra later means setting the three `AUTH_MICROSOFT_ENTRA_ID_*`
-environment variables on the web Container App per the Plan 3 spec §7 cutover. That change alone is
-sufficient: setting a Container App's environment variables creates a **new revision**, and therefore
-a **new process**, and `bypassEnabled`/`entraConfigured` are read once per process at module load —
-so the new process reads the new values on its own. **No image rebuild is needed.** (What this does
-*not* mean: the flags are not re-read on a live, already-running process — only a new revision's new
-process reads them, which is exactly what a Container Apps env-var update produces.)
+could not update). Enabling Entra later means setting these three environment variables on the web
+Container App, per `isEntraConfigured` in `apps/web/auth.config.ts` and the Plan 3 spec §7 cutover:
+
+| Variable | Value |
+|---|---|
+| `AUTH_MICROSOFT_ENTRA_ID_ID` | The app registration's Application (client) ID |
+| `AUTH_MICROSOFT_ENTRA_ID_SECRET` | A client secret generated for that registration |
+| `AUTH_MICROSOFT_ENTRA_ID_ISSUER` | `https://login.microsoftonline.com/<tenant-id>/v2.0` |
+
+All three are required together — `isEntraConfigured` checks each is present and non-empty
+(whitespace-only counts as unset), and Auth.js registers the real Entra provider only when all
+three pass; leaving any one blank leaves the app in the same "not configured" state as today, not
+a partially-working sign-in. That change alone is sufficient: setting a Container App's
+environment variables creates a **new revision**, and therefore a **new process**, and
+`bypassEnabled`/`entraConfigured` are read once per process at module load — so the new process
+reads the new values on its own. **No image rebuild is needed.** (What this does *not* mean: the
+flags are not re-read on a live, already-running process — only a new revision's new process
+reads them, which is exactly what a Container Apps env-var update produces.)
