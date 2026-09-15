@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { isWeekday, previousWeekday, toProgrammeDate, type CivilDate } from "@irp/core";
 import { buildTestServer } from "./helpers/build-test-server.js";
@@ -6,6 +6,7 @@ import { resolveRange } from "../src/routes/me-days.js";
 import { resetDb } from "./helpers/db.js";
 import { signToken } from "./helpers/keys.js";
 import { dbUrl } from "./helpers/require-db.js";
+import type { NotificationEvent } from "../src/services/notification-service.js";
 
 const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
 
@@ -513,3 +514,103 @@ describe.skipIf(!dbUrl)(
     });
   },
 );
+
+// FR-21: same isolation rationale as entries-endpoint.test.ts's notification
+// describe block — a dedicated app instance carrying a spy notificationService.
+describe.skipIf(!dbUrl)("POST /api/v1/daily-reports/{id}/transition — notifications (FR-21)", () => {
+  let app: FastifyInstance;
+  let prisma: Awaited<ReturnType<typeof buildTestServer>>["prisma"];
+  const notify = vi.fn<(event: NotificationEvent) => void>();
+
+  beforeAll(async () => {
+    ({ app, prisma } = await buildTestServer(dbUrl!, { notificationService: { notify } }));
+  });
+  beforeEach(async () => {
+    await resetDb(prisma);
+    notify.mockReset();
+  });
+  afterAll(async () => {
+    await app.close();
+    await prisma.$disconnect();
+  });
+
+  function weekdayInWindow(): CivilDate {
+    const today = toProgrammeDate(new Date());
+    return isWeekday(today) ? today : previousWeekday(today);
+  }
+
+  async function submittedReportId(studentExternalId: string): Promise<{ studentId: string; reportId: string }> {
+    const s = await prisma.user.create({
+      data: {
+        externalId: studentExternalId, email: `${studentExternalId}@dev.local`,
+        displayName: studentExternalId, role: "STUDENT",
+      },
+    });
+    const target = weekdayInWindow();
+    const entryRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/entries",
+      headers: bearer(await signToken({ oid: studentExternalId })),
+      payload: { entryDate: target, body: "Work for the notification test." },
+    });
+    expect(entryRes.statusCode).toBe(200);
+    const report = await prisma.dailyReport.findFirstOrThrow({ where: { studentId: s.id } });
+    return { studentId: s.id, reportId: report.id };
+  }
+
+  it("still returns 200 and commits the transition when notify() throws on every call", async () => {
+    notify.mockImplementation(() => {
+      throw new Error("notification dispatch exploded");
+    });
+    const { reportId } = await submittedReportId("notif-rev-1-student");
+    await prisma.user.create({
+      data: { externalId: "notif-rev-1-mentor", email: "notif-rev-1-mentor@dev.local", displayName: "m", role: "ADMIN" },
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/daily-reports/${reportId}/transition`,
+      headers: bearer(await signToken({ oid: "notif-rev-1-mentor" })),
+      payload: { to: "InReview" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
+    expect(row.status).toBe("IN_REVIEW");
+  });
+
+  it("calls notify() exactly once per transition, with `to` matching the request", async () => {
+    const { studentId, reportId } = await submittedReportId("notif-rev-2-student");
+    await prisma.user.create({
+      data: { externalId: "notif-rev-2-mentor", email: "notif-rev-2-mentor@dev.local", displayName: "m", role: "ADMIN" },
+    });
+    const bearerHeader = bearer(await signToken({ oid: "notif-rev-2-mentor" }));
+    // submittedReportId's own entry submission already triggered one
+    // EntrySubmitted notify() call — not the transition this test asserts on.
+    notify.mockClear();
+
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/daily-reports/${reportId}/transition`,
+      headers: bearerHeader,
+      payload: { to: "InReview" },
+    });
+    expect(first.statusCode).toBe(200);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "ReportTransitioned", studentId, reportId, to: "InReview" }),
+    );
+
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/v1/daily-reports/${reportId}/transition`,
+      headers: bearerHeader,
+      payload: { to: "Evaluated" },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(notify).toHaveBeenLastCalledWith(
+      expect.objectContaining({ type: "ReportTransitioned", studentId, reportId, to: "Evaluated" }),
+    );
+  });
+});

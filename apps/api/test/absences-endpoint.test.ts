@@ -5,6 +5,7 @@ import { buildTestServer } from "./helpers/build-test-server.js";
 import { resetDb } from "./helpers/db.js";
 import { signToken } from "./helpers/keys.js";
 import { dbUrl } from "./helpers/require-db.js";
+import type { NotificationEvent } from "../src/services/notification-service.js";
 
 const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
 
@@ -336,5 +337,90 @@ describe.skipIf(!dbUrl)("POST /api/v1/absences and DELETE /api/v1/absences/{date
     expect(res.headers["content-type"]).toContain("application/problem+json");
     const body = res.json<ProblemLike>();
     expect(body.type).toBe("https://irp.bistec.example/problems/unauthorized");
+  });
+});
+
+// FR-21: same isolation rationale as entries-endpoint.test.ts's notification
+// describe block — a dedicated app instance carrying a spy notificationService.
+describe.skipIf(!dbUrl)("POST/DELETE /api/v1/absences — notifications (FR-21)", () => {
+  let app: FastifyInstance;
+  let prisma: Awaited<ReturnType<typeof buildTestServer>>["prisma"];
+  const notify = vi.fn<(event: NotificationEvent) => void>();
+
+  beforeAll(async () => {
+    ({ app, prisma } = await buildTestServer(dbUrl!, { notificationService: { notify } }));
+  });
+  beforeEach(async () => {
+    await resetDb(prisma);
+    notify.mockReset();
+  });
+  afterAll(async () => {
+    await app.close();
+    await prisma.$disconnect();
+  });
+
+  async function student(externalId: string) {
+    return prisma.user.create({
+      data: { externalId, email: `${externalId}@dev.local`, displayName: externalId, role: "STUDENT" },
+    });
+  }
+
+  it("still returns 200 and commits the absence when notify() throws on every call", async () => {
+    notify.mockImplementation(() => {
+      throw new Error("notification dispatch exploded");
+    });
+    await student("notif-abs-1");
+    const target = weekdayInWindow();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/absences",
+      headers: bearer(await signToken({ oid: "notif-abs-1" })),
+      payload: { date: target, reason: "medical" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(await prisma.absenceRecord.count()).toBe(1);
+  });
+
+  it("calls notify() once on create", async () => {
+    const s = await student("notif-abs-2");
+    const target = weekdayInWindow();
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/absences",
+      headers: bearer(await signToken({ oid: "notif-abs-2" })),
+      payload: { date: target, reason: "medical" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "AbsenceMarked", studentId: s.id, date: target, reason: "medical" }),
+    );
+  });
+
+  it("does not call notify() on delete — retraction is not a submission (design spec §2)", async () => {
+    await student("notif-abs-3");
+    const target = weekdayInWindow();
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/absences",
+      headers: bearer(await signToken({ oid: "notif-abs-3" })),
+      payload: { date: target, reason: "medical" },
+    });
+    expect(created.statusCode).toBe(200);
+    notify.mockClear();
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/absences/${target}`,
+      headers: bearer(await signToken({ oid: "notif-abs-3" })),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(notify).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,13 @@
 type Env = NodeJS.ProcessEnv;
 
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  user: string;
+  pass: string;
+  fromEmail: string;
+}
+
 export interface AppConfig {
   port: number;
   databaseUrl: string;
@@ -8,6 +16,12 @@ export interface AppConfig {
   jwtAudience: string;
   version: string;
   nodeEnv: "development" | "test" | "production";
+  // FR-21 notifications. All optional (spec §7) — an unset value no-ops that
+  // channel with a startup warning rather than failing to boot, so pnpm dev
+  // and CI need no new required secret.
+  teamsWebhookUrl: string | undefined;
+  smtp: SmtpConfig | undefined;
+  webBaseUrl: string;
 }
 
 const REQUIRED_ENV_NAMES = {
@@ -54,5 +68,23 @@ export function loadConfig(env: Env): AppConfig {
     jwtAudience: required.jwtAudience!,
     version: env.APP_VERSION ?? "0.0.0",
     nodeEnv,
+    teamsWebhookUrl: env.TEAMS_WEBHOOK_URL,
+    smtp: loadSmtpConfig(env),
+    webBaseUrl: env.WEB_BASE_URL ?? "http://localhost:3100",
   };
+}
+
+/**
+ * All-or-nothing (Plan 8 design spec §7): a partial SMTP block is treated
+ * the same as an unset one — `SmtpEmailSender` no-ops with a warning rather
+ * than the app failing to boot on a half-finished config.
+ */
+function loadSmtpConfig(env: Env): SmtpConfig | undefined {
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, NOTIFICATIONS_FROM_EMAIL } = env;
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !NOTIFICATIONS_FROM_EMAIL) return undefined;
+
+  const port = Number(SMTP_PORT ?? 587);
+  if (!Number.isInteger(port) || port <= 0) return undefined;
+
+  return { host: SMTP_HOST, port, user: SMTP_USER, pass: SMTP_PASS, fromEmail: NOTIFICATIONS_FROM_EMAIL };
 }

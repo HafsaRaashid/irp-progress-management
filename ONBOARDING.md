@@ -119,6 +119,26 @@ Leave all three `AUTH_MICROSOFT_ENTRA_ID_*` variables **empty** — a
 placeholder value there breaks the dev bypass too (see the comment in the
 file itself).
 
+**`apps/api/.env`'s six notification variables (FR-21, Plan 8) are all
+optional — leave every one of them blank for local dev:**
+
+```
+TEAMS_WEBHOOK_URL=
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USER=
+SMTP_PASS=
+NOTIFICATIONS_FROM_EMAIL=
+WEB_BASE_URL=http://localhost:3100
+```
+
+`TEAMS_WEBHOOK_URL` unset and the SMTP block unset (or only partially
+set — it is all-or-nothing) each independently no-op that channel with a
+single startup warning log, rather than failing to boot. `pnpm dev` and CI
+both run with every one of these blank. See ADR-0024 (Teams webhook) and
+ADR-0025 (SMTP via M365) for why those two delivery mechanisms were chosen,
+and the Plan 8 design spec for the full notification behaviour.
+
 ## 5. Start Postgres and migrate
 
 ```powershell
