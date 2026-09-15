@@ -37,12 +37,12 @@ underlying FRs — is what changes here. Per `CLAUDE.md`, "a change that maps to
 belong in this repo" without going through the same escalation the Settings/theme-switch spec
 used for its own no-FR change (ADR-0002 closure, logged as **O-14**).
 
-**Action:** logged as a new open point, **O-16**, for mentor sign-off — "replace the FR-28/29
+**Action:** logged as a new open point, **O-17**, for mentor sign-off — "replace the FR-28/29
 ribbon with a month-grid calendar; no requirement currently asks for this." Implement behind the
 stated assumption that the calendar is wanted, and mark the new component's entry point
-`// ASSUMPTION: O-16`. Do not silently claim FR-28/29 coverage as though this were requested.
+`// ASSUMPTION: O-17`. Do not silently claim FR-28/29 coverage as though this were requested.
 
-If O-16 comes back "no," §11 covers the revert path.
+If O-17 comes back "no," §11 covers the revert path.
 
 ## 3. Architecture
 
@@ -130,7 +130,7 @@ to brainstorming, not ship over-budget.
 
 - `docs/design-system.md` §7 — replace the ribbon's visual spec with the calendar grid's (cell
   states, colour-plus-text rule, week-row layout)
-- `docs/interview-and-prd.md` §5 — add **O-16** (calendar replaces the ribbon; maps to no FR)
+- `docs/interview-and-prd.md` §5 — add **O-17** (calendar replaces the ribbon; maps to no FR)
 - `handoff.md` §1 — a dated entry for this slice
 - `docs/walkthrough.md` — mentor/student home screenshots and descriptions update from ribbon to
   calendar
@@ -153,6 +153,6 @@ inconsistent navigation idiom next to the app's existing cycle-based one).
 | Risk | Handling |
 |---|---|
 | A month-grid genuinely cannot fit FR-28's no-scroll budget even with D3's mitigation | §7 makes this an explicit go/no-go gate, not a discovered-late problem. If it fails, the finding goes back to brainstorming — do not ship a scrolling dashboard to satisfy a no-scroll requirement. |
-| O-16 comes back "no" | `CycleRibbon` and its helpers are renamed, not deleted, in this design (`toBatch/StudentCalendarDays` wrap the same underlying classification functions) — reverting is restoring the three call sites to the old component, not rebuilding ribbon logic from scratch. Keep this in its own commit range for a clean revert. |
+| O-17 comes back "no" | `CycleRibbon` and its helpers are renamed, not deleted, in this design (`toBatch/StudentCalendarDays` wrap the same underlying classification functions) — reverting is restoring the three call sites to the old component, not rebuilding ribbon logic from scratch. Keep this in its own commit range for a clean revert. |
 | Weekend cells showing (unlike the ribbon's total omission) reopens ADR-0003 Amendment 1's reasoning about "extra work" visibility | Deliberate, and stated in §3 — a grid cannot omit calendar days the way a linear strip can. Flagged here so it isn't mistaken for an accidental regression during review. |
 | The grid's accessibility semantics (week/weekday roles) are new work with no ribbon precedent to copy | Scoped explicitly in §4 rather than assumed to be "the same as before" — budget real design-system review time for this, not just a port of the ribbon's existing per-day labels. |
