@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-11
 **Author:** Mohaideen Abdullah (spec lead, with Claude Code)
-**Status:** Draft — pending review by Danella De Cruz before Hafsa Raashid begins implementation
+**Status:** Accepted — reviewed and approved by Danella De Cruz on 2026-09-15. Hafsa Raashid may begin implementation.
 **Feeds:** Plan 8 (`handoff.md` §2a), one branch and one PR, in `HafsaRaashid/irp-progress-management`
 **FRs:** FR-21 — "Notifications fire on submission and on state change, delivered to Microsoft
 Teams and email."
