@@ -30,6 +30,7 @@ beforeAll(async () => {
     config: {
       port: 3001, databaseUrl: "unused", jwksUri: "unused",
       jwtIssuer: testIssuer, jwtAudience: testAudience, version: "0.0.0", nodeEnv: "test",
+      teamsWebhookUrl: undefined, smtp: undefined, webBaseUrl: "http://localhost:3100",
     },
     userRepo: fakeUserRepo([{ id: "u1", externalId: "oid-1", email: "a@bistecglobal.com", displayName: "Amaya", role: "STUDENT" }]),
     entryRepo: unusedEntryRepo(),

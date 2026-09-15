@@ -30,6 +30,7 @@ export async function buildTestServer(databaseUrl: string): Promise<{
     config: {
       port: 3001, databaseUrl, jwksUri: "unused",
       jwtIssuer: testIssuer, jwtAudience: testAudience, version: "0.0.0", nodeEnv: "test",
+      teamsWebhookUrl: undefined, smtp: undefined, webBaseUrl: "http://localhost:3100",
     },
     userRepo: createUserRepo(prisma),
     entryRepo,
