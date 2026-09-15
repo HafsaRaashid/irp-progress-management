@@ -14,6 +14,7 @@ import { unusedMentorRecordRepo } from "./helpers/fake-mentor-record-repo.js";
 import { unusedDayService } from "./helpers/fake-day-service.js";
 import { unusedRosterService } from "./helpers/fake-roster-service.js";
 import { unusedDashboardService } from "./helpers/fake-dashboard-service.js";
+import { unusedNotificationService } from "./helpers/fake-notification-service.js";
 import { unusedPrisma } from "./helpers/fake-prisma.js";
 import { problemSchema } from "./helpers/problem-schema.js";
 import { getLocalKeySet, signToken, testIssuer, testAudience } from "./helpers/keys.js";
@@ -40,6 +41,7 @@ beforeAll(async () => {
     dayService: unusedDayService(),
     rosterService: unusedRosterService(),
     dashboardService: unusedDashboardService(),
+    notificationService: unusedNotificationService(),
     getKey,
     tracerProvider: createTracerProvider(new InMemorySpanExporter()),
     prisma: unusedPrisma(),

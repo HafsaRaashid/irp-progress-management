@@ -26,6 +26,7 @@ import { dashboardRoutes } from "./routes/dashboards.js";
 import type { DayService } from "./services/day-service.js";
 import type { RosterService } from "./services/roster-service.js";
 import type { DashboardService } from "./services/dashboard-service.js";
+import type { NotificationService } from "./services/notification-service.js";
 
 export interface ServerDeps {
   config: AppConfig;
@@ -37,6 +38,7 @@ export interface ServerDeps {
   dayService: DayService;
   rosterService: RosterService;
   dashboardService: DashboardService;
+  notificationService: NotificationService;
   getKey: JWTVerifyGetKey;
   tracerProvider: NodeTracerProvider;
   // Handed to userRoutes for exactly one call site — see the comment there.
@@ -71,8 +73,14 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   await app.register(requireAuthPlugin);
   await app.register(healthRoutes);
   await app.register(meRoutes);
-  await app.register(entryRoutes, { entryRepo: deps.entryRepo });
-  await app.register(absenceRoutes, { absenceRepo: deps.absenceRepo });
+  await app.register(entryRoutes, {
+    entryRepo: deps.entryRepo,
+    notificationService: deps.notificationService,
+  });
+  await app.register(absenceRoutes, {
+    absenceRepo: deps.absenceRepo,
+    notificationService: deps.notificationService,
+  });
   await app.register(meDaysRoutes, { dayService: deps.dayService });
   await app.register(batchRoutes, { batchRepo: deps.batchRepo, rosterService: deps.rosterService });
   await app.register(dashboardRoutes, { dashboardService: deps.dashboardService });
@@ -81,6 +89,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     userRepo: deps.userRepo,
     mentorRecordRepo: deps.mentorRecordRepo,
     dayService: deps.dayService,
+    notificationService: deps.notificationService,
   });
   await app.register(userRoutes, {
     userRepo: deps.userRepo,

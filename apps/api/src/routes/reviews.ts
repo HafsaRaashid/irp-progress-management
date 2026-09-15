@@ -5,6 +5,7 @@ import type { EntryRepo, DailyReportRecord } from "../db/entry-repo.js";
 import type { UserRepo } from "../db/user-repo.js";
 import type { MentorRecordRepo, MentorDayRecordShape } from "../db/mentor-record-repo.js";
 import type { DayService } from "../services/day-service.js";
+import type { NotificationService } from "../services/notification-service.js";
 import { StudentNotFoundError, WeekendDayRecordError } from "../domain/errors.js";
 import { requireAdmin } from "../plugins/roles.js";
 import { REPORT_STATUS_TO_API, resolveRange, toApiDay, DAYS_QUERY } from "./me-days.js";
@@ -60,6 +61,7 @@ export const reviewRoutes: FastifyPluginAsync<{
   userRepo: UserRepo;
   mentorRecordRepo: MentorRecordRepo;
   dayService: DayService;
+  notificationService: NotificationService;
   // eslint-disable-next-line @typescript-eslint/require-await
 }> = async (app, opts) => {
   app.post<{ Params: { id: string }; Body: components["schemas"]["TransitionRequest"] }>(
@@ -69,6 +71,17 @@ export const reviewRoutes: FastifyPluginAsync<{
       requireAdmin(req);
       const to = TO_DB_STATUS[req.body.to];
       const report = await opts.entryRepo.transition(req.params.id, to, req.user!.id, new Date());
+      // FR-21, fire-and-forget (design spec D5) — see entries.ts's identical guard.
+      try {
+        opts.notificationService.notify({
+          type: "ReportTransitioned",
+          studentId: report.studentId,
+          reportId: report.id,
+          to: req.body.to,
+        });
+      } catch (err) {
+        req.log.warn({ err }, "notificationService.notify threw synchronously");
+      }
       return toApiDailyReport(report);
     },
   );

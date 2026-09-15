@@ -9,11 +9,20 @@ import { createMentorRecordRepo } from "../../src/db/mentor-record-repo.js";
 import { createDayService } from "../../src/services/day-service.js";
 import { createRosterService } from "../../src/services/roster-service.js";
 import { createDashboardService } from "../../src/services/dashboard-service.js";
+import type { NotificationService } from "../../src/services/notification-service.js";
 import { createTracerProvider } from "../../src/telemetry.js";
 import { buildServer } from "../../src/server.js";
 import { getLocalKeySet, testIssuer, testAudience } from "./keys.js";
 
-export async function buildTestServer(databaseUrl: string): Promise<{
+// Every existing suite gets zero notification behaviour by default — FR-21
+// tests override this explicitly (see notification-related cases in
+// entries/absences/reviews-endpoint.test.ts).
+const noopNotificationService: NotificationService = { notify: () => undefined };
+
+export async function buildTestServer(
+  databaseUrl: string,
+  overrides: { notificationService?: NotificationService } = {},
+): Promise<{
   app: FastifyInstance;
   exporter: InMemorySpanExporter;
   prisma: ReturnType<typeof createPrismaClient>;
@@ -40,6 +49,7 @@ export async function buildTestServer(databaseUrl: string): Promise<{
     dayService,
     rosterService: createRosterService({ batchRepo, dayService, mentorRecordRepo }),
     dashboardService,
+    notificationService: overrides.notificationService ?? noopNotificationService,
     getKey: await getLocalKeySet(),
     tracerProvider: createTracerProvider(exporter),
     prisma,

@@ -1,4 +1,5 @@
 import { createRemoteJWKSet } from "jose";
+import pino from "pino";
 import { bootstrap } from "./bootstrap.js";
 import { loadConfig } from "./config.js";
 import { createPrismaClient } from "./db/client.js";
@@ -14,6 +15,8 @@ import { createTracerProvider } from "./telemetry.js";
 import { createDayService } from "./services/day-service.js";
 import { createRosterService } from "./services/roster-service.js";
 import { createDashboardService } from "./services/dashboard-service.js";
+import { createNotificationService } from "./services/notification-service.js";
+import { createTeamsWebhookSender, createSmtpEmailSender } from "./services/notification-senders.js";
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -36,9 +39,23 @@ await bootstrap({
     const dashboardService = createDashboardService({ batchRepo, dayService });
     const getKey = createRemoteJWKSet(new URL(config.jwksUri));
     const tracerProvider = createTracerProvider(selectSpanExporter(process.env));
+
+    // FR-21. Its own logger, independent of Fastify's request-scoped one —
+    // notify() is called from route handlers but never awaited by them, so
+    // its failures are dispatch-time, not request-time, events.
+    const notificationLogger = pino({ name: "notifications" });
+    const notificationService = createNotificationService({
+      userRepo,
+      teams: createTeamsWebhookSender(config.teamsWebhookUrl, notificationLogger),
+      email: createSmtpEmailSender(config.smtp, notificationLogger),
+      webBaseUrl: config.webBaseUrl,
+      tracer: tracerProvider.getTracer("irp-api"),
+      logger: notificationLogger,
+    });
+
     const app = await buildServer({
       config, userRepo, entryRepo, absenceRepo, batchRepo, mentorRecordRepo,
-      dayService, rosterService, dashboardService, getKey, tracerProvider, prisma,
+      dayService, rosterService, dashboardService, notificationService, getKey, tracerProvider, prisma,
     });
 
     registerShutdown({

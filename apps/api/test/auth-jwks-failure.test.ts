@@ -13,6 +13,7 @@ import { unusedMentorRecordRepo } from "./helpers/fake-mentor-record-repo.js";
 import { unusedDayService } from "./helpers/fake-day-service.js";
 import { unusedRosterService } from "./helpers/fake-roster-service.js";
 import { unusedDashboardService } from "./helpers/fake-dashboard-service.js";
+import { unusedNotificationService } from "./helpers/fake-notification-service.js";
 import { unusedPrisma } from "./helpers/fake-prisma.js";
 
 // This suite exercises only the auth plugin's key-getter branching — it never
@@ -41,6 +42,7 @@ describe("when the JWKS endpoint is unreachable", () => {
       dayService: unusedDayService(),
       rosterService: unusedRosterService(),
       dashboardService: unusedDashboardService(),
+      notificationService: unusedNotificationService(),
       // Stands in for createRemoteJWKSet against a dead endpoint.
       getKey: () => {
         throw new Error("ECONNREFUSED: the JWKS endpoint is unreachable");
@@ -104,6 +106,7 @@ describe("when a token's kid matches no published key", () => {
       dayService: unusedDayService(),
       rosterService: unusedRosterService(),
       dashboardService: unusedDashboardService(),
+      notificationService: unusedNotificationService(),
       // A REAL key-getter over a healthy, reachable key set — this is not a
       // simulated outage. It simply does not contain the kid the forged
       // token below claims, which is exactly what a live server sees when
