@@ -83,14 +83,17 @@ model Enrolment {
 
 /// FR-10/11/13/33. Flags are computed AT SUBMISSION TIME and stored.
 model Entry {
-  id          String   @id @default(uuid())
-  studentId   String
-  entryDate   DateTime @db.Date
-  body        String
-  submittedAt DateTime @db.Timestamptz(3)
-  isLate      Boolean
-  isExtra     Boolean
-  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  id                     String   @id @default(uuid())
+  studentId              String
+  entryDate              DateTime @db.Date
+  body                   String
+  submittedAt            DateTime @db.Timestamptz(3)
+  isLate                 Boolean
+  isExtra                Boolean
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+  score                  Int?     // 0-100. Null until reviewed. ASSUMPTION: O-18.
+  mentorFeedback         String?  // Free text. Null until reviewed. ASSUMPTION: O-18.
+  countsTowardEvaluation Boolean  @default(false) // True only once scored AND explicitly ticked. ASSUMPTION: O-18.
 
   student User @relation(fields: [studentId], references: [id])
 
