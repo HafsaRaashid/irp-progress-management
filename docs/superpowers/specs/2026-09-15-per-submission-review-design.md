@@ -2,7 +2,11 @@
 
 **Date:** 2026-09-15
 **Author:** Mohaideen Abdullah (spec lead, with Claude Code)
-**Status:** Draft — pending review by Danella De Cruz before Hafsa Raashid begins implementation
+**Status:** Accepted — reviewed by Danella De Cruz (the "unprefilled reopen"/student-visible-score-leak
+catches in §4/§7 are hers). Hafsa Raashid proceeds behind the **O-18** assumption
+(`docs/interview-and-prd.md` §5) per [ADR-0026](../../adr/0026-mentor-scored-submissions-over-ai-scored-cycles.md);
+**mentor sign-off on O-18 itself remains outstanding** — see this spec's own §10 risk note, which
+this Status line does not override.
 **Feeds:** a new plan, one branch and one PR, in `HafsaRaashid/irp-progress-management`. First of a
 four-spec sequence covering the irp-consolidation-task-list.xlsx feature gaps (this spec: tasks
 1–4; task 5 next; tasks 6/7 after; task 8 independent)
