@@ -35,6 +35,34 @@ Copies of the PRD, the interview record, and the brief also sit directly under t
 
 ## 1. State of play
 
+### 2026-09-17 — Plan 9: the AI-evaluation pivot (O-18)
+
+**Shipped:** `PUT /api/v1/entries/{id}/review` — a mentor scores one `Entry` directly (0-100,
+free-text feedback, a `countsTowardEvaluation` flag), replacing the AI-scored-cycle pipeline
+FR-22/23/24 described. That pipeline was gated on O-5 (undecided AI provider, no resolution date);
+rather than keep the whole evaluation slice parked behind it, [ADR-0026](docs/adr/0026-mentor-scored-submissions-over-ai-scored-cycles.md)
+moves scoring to the mentor, per-submission, with no AI call anywhere in this path. This also
+puts FR-26 ("no day-to-day scoring") in direct conflict, not just FR-22-24 — flagged in
+`docs/interview-and-prd.md`, not silently rewritten.
+
+**Behind a new open point, not the old one.** O-5 remains genuinely unresolved and now blocks
+nothing currently planned. The new gate is **O-18** — mentor sign-off on the scoring-model pivot
+itself — which is explicitly *not* the same footing as a cosmetic open point: reverting a shipped
+scoring model after mentors have scored real submissions is not cheap. Every O-18-dependent line
+is marked `// ASSUMPTION: O-18` in code, per CLAUDE.md's open-points policy.
+
+**Where the correctness risk lived:** a score must never reach the student who owns the entry, in
+any form — not `null`, not an unset value, an absent key. `toApiEntry` (student-safe) and
+`toApiEntryForMentor` are now two distinct mapping functions with two distinct generated schemas
+(`StudentEntry`/`StudentDaySummary` vs. `Entry`/`DaySummary`), enforced at the type level rather
+than by remembering to omit fields at each call site.
+
+**Feeds task 5 next**, per the slice roadmap (§2a): student-facing feedback visibility depends on
+this plan's mentor-written `mentorFeedback` existing at all, and was blocked until this merged.
+
+Plan: `docs/superpowers/plans/2026-09-15-plan-9-per-submission-review.md` · Spec:
+`docs/superpowers/specs/2026-09-15-per-submission-review-design.md`.
+
 ### 2026-08-18 — PR #17's red CI, and the web dev server moves to 3100
 
 Two things, both outside any plan. **Both merged the same day — #17 then #18 — and `main` is now at
@@ -539,7 +567,8 @@ from CI — but note the dev bypass means **nothing is blocked on it for buildin
 | # | Item | Blocks |
 |---|---|---|
 | **—** | ~~**A dedicated Entra directory.**~~ **Superseded — see the callout above.** The Azure *subscription* exists and hosting works; Entra itself is not blocked on a *dedicated* directory — `bistecglobal.com`/`bisteccare.lk` are one tenant and app-registration permissions are sufficient. Kept for record: Damian's work account has no Entra admin access in the (moot) dedicated-directory design; the fallback there was a free tenant from a personal Microsoft account, with a native `admin@<name>.onmicrosoft.com` | **No longer blocks building or demoing** — Plan 3's dev bypass removed that dependency. Still blocks: real Microsoft sign-in, `infra/entra.bicep`, and waking the dormant real-token CI job — now pending the mentor's governance sign-off on registering in BISTEC's live tenant, not a dedicated-directory technicality. `docs/manual-setup-steps.md` §1.1a |
-| O-5 | **AI provider + data-processing approval.** Student submissions are personal data leaving the tenant | The whole AI slice (Plan 9, FR-22 to FR-26). Needs an ADR and escalation to leadership |
+| O-5 | **AI provider + data-processing approval.** Student submissions are personal data leaving the tenant | **No longer blocks scoring.** Plan 9 (ADR-0026) replaced the AI-scored-cycle pipeline (FR-22-24, which this row used to gate) with mentor-scored submissions instead of waiting on O-5's resolution. O-5 itself remains open for any future AI-summary work, but nothing currently planned is blocked on it |
+| O-18 | **Mentor sign-off on per-submission review over AI-scored cycles**, shipped behind this assumption (Plan 9) | Nothing blocks building or demoing — the review endpoint and Review-page controls are live. Blocks: treating a mentor's score as final/production-trusted if sign-off comes back negative. `docs/interview-and-prd.md` §5 |
 | O-6 | Exact wording of the five rubric criteria | The evaluation schema and screen |
 | O-10 | FR-13 and FR-15 conflict on the Monday grace window | Implemented on the FR-15 reading, marked `// ASSUMPTION: O-10`. Blocks nothing |
 | O-11 | Weekends reclassified as optional Extra work — **changes FR-12, adds FR-33** | Implemented. §4.2 reserves FR changes to the mentor, so sign-off is outstanding |
@@ -588,7 +617,7 @@ begins. Plans live in `docs/superpowers/plans/`, specs in `docs/superpowers/spec
 | | *(UI follow-ups to 7 — no new T-numbers)* | — | — | ✅ **Merged, PRs #13–#17.** Design-system pass (#13); roster legibility + `Batch 1`/`Batch 2` seed rename (#14); the collapsed ribbon key and `workers: 1` (#15, ADR-0020); **7A** Settings page, theme by cookie, verified dark (#16, ADR-0021/0022); **7B** frame and brand — sidebar icons, the logo, Sign out relocated, `Create batch` returned to Students (#17, ADR-0023). 7A and 7B carry their own plan/spec pairs under `docs/superpowers/` |
 | | *(developer-environment chore)* | — | — | ✅ **Merged, PR #18.** Web dev server moved 3000 → **3100**; container-internal ports deliberately unchanged. No FR — see CLAUDE.md's **Local ports** rule |
 | **3 — Evaluation** | 8 · Notifications | T-16 | — | Not started |
-| | 9 · AI evaluation | T-17 | — | **Blocked on O-5** |
+| | 9 · Per-submission review (was: AI evaluation) | T-17 | — | ✅ **Merged, PR #TBD.** Pivoted off O-5 (still unresolved) to mentor-scored submissions instead (ADR-0026), behind O-18 (mentor sign-off outstanding). Plan: `docs/superpowers/plans/2026-09-15-plan-9-per-submission-review.md` · Spec: `docs/superpowers/specs/2026-09-15-per-submission-review-design.md` |
 | | 10 · Winner + PDF | T-18 | — | Not started |
 | **4 — Proving it** | 11 · Load test + retro | T-24 – T-26 | D4 | Not started — and cannot start meaningfully until the deploy runbook's §1 bootstrap is run: NFR-1/NFR-2's k6 targets need a deployed URL, and NFR-3 needs the Entra directory this plan deferred a fourth time |
 
@@ -641,7 +670,7 @@ maintaining both would guarantee drift.
 | T-14 | Mentor dashboard — performance summary + "N of M submitted today" + late/absent counts, no scrolling. **Ship this first; it is the stakeholder's must-have** | FR-28, SC-4 |
 | T-15 | Student dashboard — own history, "Month N of 6", strengths-and-weaknesses summary. No score, no rank, no other students | FR-29, FR-30 |
 | T-16 | Teams + email notifications on submission and state change | FR-21 |
-| T-17 | AI monthly evaluation: summary generation, fixed-rubric scoring (20/25/25/10/20), mentor override with reason, no summary editing, no mid-cycle evaluation. Persist model version + score. **Blocked on O-5** | FR-22..FR-27, NFR-15 |
+| T-17 | ~~AI monthly evaluation: summary generation, fixed-rubric scoring (20/25/25/10/20), mentor override with reason, no summary editing, no mid-cycle evaluation. Persist model version + score. Blocked on O-5.~~ **Superseded by Plan 9 (ADR-0026):** mentor scores each `Entry` directly instead — see O-18 | FR-22..FR-27, NFR-15 |
 | T-18 | Winner computation + downloadable PDF with AI justification | FR-31, FR-32 |
 
 ### Phase 5 — Deploy & observability (Deliverable 3)
@@ -1179,6 +1208,11 @@ whole-branch review before the PR.
 blocks the evaluation schema. O-10 to O-13 need mentor sign-off but block nothing — all are
 implemented behind stated assumptions and marked in code. **The Azure account blocks Plans 3
 and 4 and is the only genuinely blocking item.**
+
+> **Superseded 2026-09-17 (Plan 9).** "O-5 blocks Plan 9" and "T-17 waits on O-5" above no longer
+> hold. Plan 9 shipped mentor-scored submissions (ADR-0026) instead of the AI-scored-cycle pipeline
+> O-5 was gating, behind a new open point, O-18 (mentor sign-off on the scoring-model pivot itself).
+> O-5 remains genuinely unresolved, but nothing currently planned routes through it anymore.
 
 ### Gates that exist, and what each actually catches
 
