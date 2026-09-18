@@ -69,10 +69,19 @@ export interface EntryRepo {
    * set together in one write. Same lock shape as `addEntry` — resolves the
    * entry's parent `DailyReport` by (studentId, entryDate) and throws
    * `LockedDayError` if it is `EVALUATED` (FR-20).
+   *
+   * Scoring an entry is itself review activity: a still-`SUBMITTED` day is
+   * advanced to `IN_REVIEW` in the same transaction, so a mentor never needs
+   * a separate manual "start review" step first. This method never actually
+   * required `IN_REVIEW` to already hold before accepting a review write —
+   * the auto-advance just makes the day's UI-visible status agree with what
+   * was already true underneath it.
    */
   reviewEntry(
     id: string,
     input: { score: number; mentorFeedback: string; countsTowardEvaluation: boolean },
+    mentorId: string,
+    now: Date,
   ): Promise<EntryRecord>;
 }
 
@@ -193,15 +202,33 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
     // concurrency guard: two mentors racing the same step both attempt the
     // same conditional update, and exactly one sees count === 1.
     async transition(reportId, to, mentorId, now) {
-      const expected = to === "IN_REVIEW" ? "SUBMITTED" : "IN_REVIEW";
-      const data =
-        to === "IN_REVIEW"
-          ? { status: to, reviewedById: mentorId, inReviewAt: now }
-          : { status: to, reviewedById: mentorId, evaluatedAt: now };
-      const { count } = await prisma.dailyReport.updateMany({
-        where: { id: reportId, status: expected },
-        data,
-      });
+      let count: number;
+      if (to === "IN_REVIEW") {
+        ({ count } = await prisma.dailyReport.updateMany({
+          where: { id: reportId, status: "SUBMITTED" },
+          data: { status: to, reviewedById: mentorId, inReviewAt: now },
+        }));
+      } else {
+        // EVALUATED is reachable directly from SUBMITTED now, not only from
+        // IN_REVIEW: per-submission review can advance a day to InReview on
+        // its own (reviewEntry, below), so requiring a separate manual
+        // "Start review" step before evaluating is no longer necessary --
+        // nor is scoring an entry required at all before evaluating. Two
+        // attempts, not one updateMany over both statuses, because the data
+        // written differs: inReviewAt is only backfilled to `now` when
+        // jumping straight from SUBMITTED -- a day already IN_REVIEW keeps
+        // its real inReviewAt instant.
+        ({ count } = await prisma.dailyReport.updateMany({
+          where: { id: reportId, status: "IN_REVIEW" },
+          data: { status: to, reviewedById: mentorId, evaluatedAt: now },
+        }));
+        if (count === 0) {
+          ({ count } = await prisma.dailyReport.updateMany({
+            where: { id: reportId, status: "SUBMITTED" },
+            data: { status: to, reviewedById: mentorId, inReviewAt: now, evaluatedAt: now },
+          }));
+        }
+      }
       if (count === 0) {
         const current = await prisma.dailyReport.findUnique({ where: { id: reportId } });
         if (!current) throw new ReportNotFoundError(reportId);
@@ -217,7 +244,7 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
       return { id: r.id, studentId: r.studentId, reportDate: fromDbDate(r.reportDate), status: r.status };
     },
 
-    async reviewEntry(id, input) {
+    async reviewEntry(id, input, mentorId, now) {
       return prisma.$transaction(async (tx) => {
         const entry = await tx.entry.findUnique({ where: { id } });
         if (!entry) throw new EntryNotFoundError(id);
@@ -230,6 +257,12 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
         });
         if (report?.status === "EVALUATED") {
           throw new LockedDayError(entryDate);
+        }
+        if (report?.status === "SUBMITTED") {
+          await tx.dailyReport.update({
+            where: { id: report.id },
+            data: { status: "IN_REVIEW", reviewedById: mentorId, inReviewAt: now },
+          });
         }
 
         const updated = await tx.entry.update({

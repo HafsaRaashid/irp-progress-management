@@ -43,9 +43,15 @@ export function toApiDay<E = ReturnType<typeof toApiEntry>>(
 const MAX_RANGE_DAYS = 92;
 
 export function resolveRange(from?: string, to?: string, now = new Date()) {
-  const cycle = cycleContaining(toProgrammeDate(now));
+  const today = toProgrammeDate(now);
+  const cycle = cycleContaining(today);
   const f = from === undefined ? cycle.start : civilDate(from);
-  const t = to === undefined ? cycle.end : civilDate(to);
+  // Default `to` is today, not the cycle's end -- a day that hasn't happened
+  // yet has nothing to submit, review, or attend, so neither the mentor
+  // Review page nor a student's own history should default to including it.
+  // An explicit `to` (e.g. a caller that wants the whole cycle's shape) still
+  // gets exactly what it asked for.
+  const t = to === undefined ? today : civilDate(to);
   if (compareDates(f, t) > 0) {
     throw new HttpError(400, "https://irp.bistec.example/problems/invalid-range",
       "Invalid range", "`from` is after `to`.");

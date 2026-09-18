@@ -185,7 +185,6 @@ describe("StudentReviewPage", () => {
     render(await StudentReviewPage({ params: params() }));
 
     expect(screen.getByText(/· Evaluated/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mark evaluated" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save record" })).not.toBeInTheDocument();
     // FR-20: the API 409s a review write on a locked day, so the review
@@ -194,7 +193,7 @@ describe("StudentReviewPage", () => {
     expect(screen.queryByRole("button", { name: "Save review" })).not.toBeInTheDocument();
   });
 
-  it("shows a Start review control for a Submitted day", async () => {
+  it("shows a Mark evaluated control directly for a Submitted day -- no separate Start review step", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
@@ -217,8 +216,7 @@ describe("StudentReviewPage", () => {
 
     render(await StudentReviewPage({ params: params() }));
 
-    expect(screen.getByRole("button", { name: "Start review" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Mark evaluated" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark evaluated" })).toBeInTheDocument();
   });
 
   it("hides the record form on a weekend day even when it holds an entry", async () => {
@@ -250,7 +248,7 @@ describe("StudentReviewPage", () => {
     expect(screen.queryByRole("button", { name: "Save record" })).not.toBeInTheDocument();
     // The transition control is independent of weekday -- a report exists
     // whenever an entry exists, weekend or not.
-    expect(screen.getByRole("button", { name: "Start review" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mark evaluated" })).toBeInTheDocument();
   });
 
   it("prefills the review control from the entry's current review -- reopening must not start blank", async () => {
@@ -289,6 +287,9 @@ describe("StudentReviewPage", () => {
     expect(screen.getByLabelText("Score, 0 to 100")).toHaveValue(88);
     expect(screen.getByLabelText("Mentor feedback")).toHaveValue("Solid detail.");
     expect(screen.getByLabelText("Counts toward evaluation")).toBeChecked();
+    // An InReview day still offers Mark evaluated -- identical control to a
+    // Submitted day now, not a different step.
+    expect(screen.getByRole("button", { name: "Mark evaluated" })).toBeInTheDocument();
   });
 
   it("surfaces the review action's rejection as role=alert", async () => {
@@ -377,13 +378,13 @@ describe("StudentReviewPage", () => {
 
     render(await StudentReviewPage({ params: params() }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Start review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark evaluated" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("The report is no longer Submitted.");
     expect(transitionDailyReport).toHaveBeenCalledWith({
       client: {},
       path: { id: "r-c" },
-      body: { to: "InReview" },
+      body: { to: "Evaluated" },
     });
   });
 

@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { Route } from "next";
 import type { ReactElement, ReactNode } from "react";
 import {
-  TodayIcon, RosterIcon, ReviewIcon, CyclesIcon, StudentsIcon, SettingsIcon,
+  TodayIcon, RosterIcon, CyclesIcon, StudentsIcon, SettingsIcon,
 } from "@/components/ui/icons";
 
 /**
@@ -16,12 +16,21 @@ import {
  * `typedRoutes: true` (apps/web/next.config.ts) validates every `<Link
  * href>` against routes that actually exist. Every destination on both
  * lists is now a real link: Task 9 added `apps/web/app/(app)/page.tsx`
- * ("/", Today); Task 13 added `.../roster/page.tsx` (Roster); Task 14 added
- * `.../review/page.tsx` (Review, mentor list only); Task 15 added
+ * ("/", Today); Task 13 added `.../roster/page.tsx` (Roster); Task 15 added
  * `.../students/page.tsx` (Students); Task 7 added `.../cycles/page.tsx`
  * (Cycles); Task 8 added `.../my-month/page.tsx`, so "My month" joined the
  * others last. Each destination became a real `<Link href="...">` in the
  * task that added its page — no `as Route` cast was needed in the meantime.
+ *
+ * **"Review" was deliberately dropped from this list.** `.../review/page.tsx`
+ * (added Task 14) has no student directory of its own — it only ever showed
+ * "pick a student from the roster" with a link back to Roster, which is the
+ * real directory. Every roster row already links straight to
+ * `/review/[studentId]` (roster/page.tsx), so the nav item added a click that
+ * went nowhere useful. `/review/page.tsx` and `/review/[studentId]` still
+ * exist and are still reachable — only the sidebar entry pointing at the
+ * empty landing page is gone. One consequence: visiting `/review/[studentId]`
+ * no longer lights up anything in the sidebar (see `isActive`'s note below).
  *
  * The current destination is marked with `aria-current="page"` and the
  * `--primary-weak` active-nav fill §3.1 reserves for it. This is a client
@@ -29,7 +38,7 @@ import {
  * interactive.
  *
  * Navigation is role-gated, not just link-gated: a Student never sees
- * mentor-only destinations (Roster, Review, Cycles, Students) at all, rather
+ * mentor-only destinations (Roster, Cycles, Students) at all, rather
  * than seeing them disabled. Students get their own two-item list.
  *
  * The label-only rendering branch below is kept even with no destination
@@ -59,7 +68,6 @@ type Destination = LinkedDestination | LabelOnlyDestination;
 const MENTOR_DESTINATIONS: readonly Destination[] = [
   { label: "Today", href: "/", icon: TodayIcon },
   { label: "Roster", href: "/roster", icon: RosterIcon },
-  { label: "Review", href: "/review", icon: ReviewIcon },
   { label: "Cycles", href: "/cycles", icon: CyclesIcon },
   { label: "Students", href: "/students", icon: StudentsIcon },
 ];
@@ -83,8 +91,13 @@ const SETTINGS_DESTINATION: LinkedDestination = { label: "Settings", href: "/set
 /**
  * "/" must match exactly — every other path also starts with it, so a prefix
  * test would light up Today on every screen in the app. The prefix test is
- * what the rest need: /review/<studentId> has to keep Review marked, since
- * that page has no nav entry of its own.
+ * what every other destination needs so a nested route (e.g. `/roster/x`, if
+ * one existed) still marks its parent current.
+ *
+ * Note: `/review/[studentId]` matches nothing here now that "Review" is gone
+ * from `MENTOR_DESTINATIONS` — reviewing a student no longer lights up any
+ * nav item. That's a deliberate consequence of dropping the entry, not an
+ * oversight; see the comment above `MENTOR_DESTINATIONS`.
  */
 function isActive(pathname: string, href: Route): boolean {
   if (href === "/") return pathname === "/";
@@ -93,11 +106,9 @@ function isActive(pathname: string, href: Route): boolean {
 
 export function Sidebar({
   role,
-  reviewCount = 0,
   signOutSlot,
 }: {
   role: "Admin" | "Student";
-  reviewCount?: number;
   /**
    * The sign-out form, rendered by the SERVER layout and passed in. This
    * component is a Client Component (usePathname), and `signOut` from
@@ -123,18 +134,6 @@ export function Sidebar({
       style={{ width: "216px", background: "var(--surface)", borderColor: "var(--line)" }}
     >
       {destinations.map((d) => {
-        const showCount = d.label === "Review" && reviewCount > 0;
-        // No margin here: .nav-item's `gap` already spaces every child on the
-        // row, icon-to-label and label-to-badge alike. An added `ml-2` used to
-        // double that spacing for the badge specifically, back when the badge
-        // was separated from the label by a literal " " text node instead of
-        // `gap` — see the `.nav-item` comment in globals.css.
-        const badge = showCount && (
-          <span className="tabular" style={{ color: "var(--ink-muted)" }}>
-            {reviewCount}
-          </span>
-        );
-
         if ("href" in d) {
           const active = isActive(pathname, d.href);
           const Glyph = d.icon;
@@ -151,7 +150,6 @@ export function Sidebar({
             >
               <Glyph />
               {d.label}
-              {badge}
             </Link>
           );
         }
@@ -161,7 +159,6 @@ export function Sidebar({
           <span key={d.label} aria-disabled="true" className="nav-item">
             <Glyph />
             {d.label}
-            {badge}
           </span>
         );
       })}

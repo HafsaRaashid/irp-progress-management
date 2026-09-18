@@ -200,6 +200,11 @@ paths:
         rather than merging — the caller must resend every field on a
         re-review, not just the one being changed.
 
+        Scoring an entry is itself review activity: if the entry's
+        `DailyReport` is still `Submitted`, this call advances it to
+        `InReview` as a side effect — no separate call to
+        `transitionDailyReport` is required first.
+
         Locked with the day: once the entry's `DailyReport` reaches
         `Evaluated` (FR-20), this write is rejected (409) — the same
         `LockedDayError` mechanism `createEntry` already enforces. Admin only;
@@ -1049,9 +1054,12 @@ paths:
       operationId: transitionDailyReport
       summary: Advance a daily report's review state
       description: |
-        Moves one report forward one step (FR-18): Submitted to InReview, or
-        InReview to Evaluated. Forward-only — there is no Rejected state and
-        no way back. The current state must match what the target expects
+        Moves one report forward (FR-18): Submitted to InReview, InReview to
+        Evaluated, or Submitted directly to Evaluated in one call — a
+        separate manual InReview step is never required (per-submission
+        review can already advance a report to InReview on its own; see
+        `reviewEntry`). Forward-only — there is no Rejected state and no way
+        back. The current state must be one the target actually allows
         (409 otherwise); an `updateMany` guarded on the expected current
         state makes two mentors racing the same step resolve to exactly one
         winner rather than a lost update.
@@ -1109,7 +1117,9 @@ paths:
         student and one weekday (FR-19). Independent of entries — valid for a
         day that holds no submission. A second call for the same student and
         date overwrites the first; there is one record per student-day.
-        Weekends carry no such record (400) — there is nothing to attend.
+        Weekends carry no such record (400) — there is nothing to attend. A
+        date after today is rejected the same way (400) — there is nothing to
+        attend yet, either.
       tags: [Reviews]
       parameters:
         - name: id

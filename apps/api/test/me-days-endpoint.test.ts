@@ -98,6 +98,36 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
     expect(body.at(-1)!.date).toBe(to);
   });
 
+  it("caps the default range at today, not the cycle's end — a future day has nothing to submit yet", async () => {
+    await student("md-2b");
+    const today = toProgrammeDate(new Date());
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/me/days",
+      headers: bearer(await signToken({ oid: "md-2b" })),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<DaySummaryLike[]>();
+    expect(body.at(-1)!.date).toBe(today);
+  });
+
+  it("still returns days after today when the caller asks for them explicitly via `to`", async () => {
+    await student("md-2c");
+    const future = addDays(toProgrammeDate(new Date()), 5);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/me/days?to=${future}`,
+      headers: bearer(await signToken({ oid: "md-2c" })),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<DaySummaryLike[]>();
+    expect(body.at(-1)!.date).toBe(future);
+  });
+
   it("respects an explicit range narrower than the current cycle", async () => {
     await student("md-3");
     const { from } = resolveRange();

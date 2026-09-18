@@ -117,13 +117,14 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await expect(page).toHaveURL(/\/review\//);
 
     // The mixed persona's mostly-onTime pattern guarantees at least one
-    // Submitted weekday report; "Start review" only renders for a Submitted
-    // day (transition-control.tsx), so the first one in DOM order (days
+    // Submitted weekday report; "Mark evaluated" renders for a Submitted day
+    // directly now -- there is no separate "Start review" step
+    // (transition-control.tsx) -- so the first one in DOM order (days
     // render newest-first) is exactly that day.
-    const startReviewButton = page.getByRole("button", { name: "Start review" }).first();
-    await expect(startReviewButton).toBeVisible();
+    const markEvaluatedButton = page.getByRole("button", { name: "Mark evaluated" }).first();
+    await expect(markEvaluatedButton).toBeVisible();
 
-    const rawPanel = startReviewButton.locator(
+    const rawPanel = markEvaluatedButton.locator(
       'xpath=ancestor::div[contains(@class,"rounded-[var(--radius-panel)]")][1]',
     );
     const isoDate = await rawPanel.locator('input[type="hidden"][name="date"]').inputValue();
@@ -145,21 +146,27 @@ test.describe("mentor flows (dev-admin-1)", () => {
     // Not asserting the transient "Record saved." text: this is this day's
     // FIRST record, so saving flips DayRecordForm's `defaults` prop from
     // undefined to defined -- review/[studentId]/page.tsx renders those as
-    // two separate JSX branches (mirroring the documented reason
-    // TransitionControl does the same for Submitted vs InReview), so the
-    // pre-save DayRecordForm instance unmounts and a fresh one mounts with
-    // `defaults` populated in the very same update that would show the
-    // confirmation, before it can reliably paint. A fresh GET proves
-    // persistence server-side instead, the same "don't trust the client's
-    // optimistic view" standard the submission test applies. page.goto, not
-    // page.reload() -- see that test's comment: reload() risks resubmitting
-    // the last Server Action form post as a genuine duplicate.
+    // two separate JSX branches, so the pre-save DayRecordForm instance
+    // unmounts and a fresh one mounts with `defaults` populated in the very
+    // same update that would show the confirmation, before it can reliably
+    // paint. A fresh GET proves persistence server-side instead, the same
+    // "don't trust the client's optimistic view" standard the submission
+    // test applies. page.goto, not page.reload() -- see that test's
+    // comment: reload() risks resubmitting the last Server Action form post
+    // as a genuine duplicate.
     await page.goto(page.url());
     await expect(panel.getByRole("checkbox", { name: "Attended" })).toBeChecked();
     await expect(panel.getByRole("checkbox", { name: "Tasks completed" })).toBeChecked();
     await expect(panel.getByLabel(`Mentor note for ${isoDate}`)).toHaveValue("E2E review note");
 
-    await panel.getByRole("button", { name: "Start review" }).click();
+    // Scoring the entry is itself review activity -- it advances a
+    // Submitted day to InReview automatically now, with no separate manual
+    // "Start review" click (entry-repo.ts's reviewEntry). .first() in case
+    // this day ever holds more than one entry -- only one needs scoring to
+    // prove the advance.
+    await panel.getByLabel("Score, 0 to 100").first().fill("85");
+    await panel.getByLabel("Mentor feedback").first().fill("E2E review feedback.");
+    await panel.getByRole("button", { name: "Save review" }).first().click();
     await expect(panel.getByText("In review")).toBeVisible();
 
     await panel.getByRole("button", { name: "Mark evaluated" }).click();

@@ -80,11 +80,16 @@ export const entryRoutes: FastifyPluginAsync<{ entryRepo: EntryRepo }> = async (
     { schema: { params: UUID_PARAM, body: ENTRY_REVIEW_BODY }, preHandler: [app.authenticate] },
     async (req): Promise<ApiEntry> => {
       requireAdmin(req);
-      const entry = await opts.entryRepo.reviewEntry(req.params.id, {
-        score: req.body.score,
-        mentorFeedback: req.body.feedback,
-        countsTowardEvaluation: req.body.countsTowardEvaluation,
-      });
+      const entry = await opts.entryRepo.reviewEntry(
+        req.params.id,
+        {
+          score: req.body.score,
+          mentorFeedback: req.body.feedback,
+          countsTowardEvaluation: req.body.countsTowardEvaluation,
+        },
+        req.user!.id,
+        new Date(),
+      );
       return toApiEntryForMentor(entry);
     },
   );

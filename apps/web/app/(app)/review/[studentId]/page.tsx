@@ -203,34 +203,25 @@ export default async function StudentReviewPage({
                 )}
 
                 {/*
-                  Two separate conditional branches, not one TransitionControl
-                  with a `reportStatus` prop that changes in place -- this is
-                  load-bearing, not a style choice. React reconciles these as
-                  distinct slots (only one is ever truthy), so when a
-                  transition succeeds and revalidatePath re-renders this page
-                  with the day's new reportStatus, the previous branch's
-                  TransitionControl unmounts and the next one mounts fresh.
-                  That remount is what resets useActionState back to its
-                  initial `null` -- without it, a single long-lived instance
-                  would carry the *first* step's pending/error state into the
-                  *second* step's button, and a stale error from "Start
-                  review" could linger on screen under "Mark evaluated" after
-                  the transition that produced it already succeeded.
+                  One branch now that both statuses render the identical
+                  control (Evaluated is reachable from either) -- but keyed
+                  on reportStatus so it still remounts, not just re-renders
+                  in place, when the status changes. That remount is what
+                  resets useActionState back to its initial `null`: without
+                  it, saving a review (which flips Submitted -> InReview on
+                  its own) would carry this control's stale pending/error
+                  state across the flip, and a leftover error from a prior
+                  click could linger on screen under a status it was never
+                  about.
                 */}
-                {day.reportStatus === "Submitted" && day.reportId !== null && (
-                  <TransitionControl
-                    studentId={studentId}
-                    reportId={day.reportId}
-                    reportStatus="Submitted"
-                  />
-                )}
-                {day.reportStatus === "InReview" && day.reportId !== null && (
-                  <TransitionControl
-                    studentId={studentId}
-                    reportId={day.reportId}
-                    reportStatus="InReview"
-                  />
-                )}
+                {(day.reportStatus === "Submitted" || day.reportStatus === "InReview") &&
+                  day.reportId !== null && (
+                    <TransitionControl
+                      key={day.reportStatus}
+                      studentId={studentId}
+                      reportId={day.reportId}
+                    />
+                  )}
 
                 {/*
                   Two full branches rather than `defaults={defaults}` --

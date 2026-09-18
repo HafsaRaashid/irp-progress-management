@@ -302,6 +302,57 @@ describe.skipIf(!dbUrl)("PUT /api/v1/entries/:id/review", () => {
     expect(body.countsTowardEvaluation).toBe(true);
   });
 
+  it("advances a Submitted day to InReview automatically -- no separate manual step required first", async () => {
+    const { studentId, entryId } = await submittedEntry("er-9-student");
+    const m = await mentor("er-9-mentor");
+    const reportBefore = await prisma.dailyReport.findFirstOrThrow({ where: { studentId } });
+    expect(reportBefore.status).toBe("SUBMITTED");
+    expect(reportBefore.inReviewAt).toBeNull();
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: bearer(await signToken({ oid: "er-9-mentor" })),
+      payload: { score: 70, feedback: "Advances the day on its own.", countsTowardEvaluation: false },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const reportAfter = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportBefore.id } });
+    expect(reportAfter.status).toBe("IN_REVIEW");
+    expect(reportAfter.inReviewAt).not.toBeNull();
+    expect(reportAfter.reviewedById).toBe(m.id);
+  });
+
+  it("does not disturb an already-InReview day's status or inReviewAt", async () => {
+    const { studentId, entryId } = await submittedEntry("er-10-student");
+    await mentor("er-10-mentor");
+    const mentorHeader = bearer(await signToken({ oid: "er-10-mentor" }));
+    const report = await prisma.dailyReport.findFirstOrThrow({ where: { studentId } });
+
+    const toInReview = await app.inject({
+      method: "POST",
+      url: `/api/v1/daily-reports/${report.id}/transition`,
+      headers: mentorHeader,
+      payload: { to: "InReview" },
+    });
+    expect(toInReview.statusCode).toBe(200);
+    const afterTransition = await prisma.dailyReport.findUniqueOrThrow({ where: { id: report.id } });
+    const inReviewAt = afterTransition.inReviewAt;
+    expect(inReviewAt).not.toBeNull();
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: mentorHeader,
+      payload: { score: 70, feedback: "Already in review.", countsTowardEvaluation: false },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const afterReview = await prisma.dailyReport.findUniqueOrThrow({ where: { id: report.id } });
+    expect(afterReview.status).toBe("IN_REVIEW");
+    expect(afterReview.inReviewAt).toEqual(inReviewAt);
+  });
+
   it("fully replaces score/feedback/flag on a second review write, rather than merging", async () => {
     const { entryId } = await submittedEntry("er-2-student");
     await mentor("er-2-mentor");

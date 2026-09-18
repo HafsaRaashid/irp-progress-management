@@ -55,16 +55,6 @@ export function RosterIcon(): ReactElement {
   );
 }
 
-/** A check inside a circle — something reviewed. */
-export function ReviewIcon(): ReactElement {
-  return (
-    <Icon>
-      <circle cx="8" cy="8" r="5.5" />
-      <path d="M5.6 8.2l1.8 1.8 3.1-3.7" />
-    </Icon>
-  );
-}
-
 /** A circular arrow — the monthly cycle. */
 export function CyclesIcon(): ReactElement {
   return (

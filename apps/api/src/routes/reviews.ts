@@ -1,11 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
-import { civilDate, isWeekday } from "@irp/core";
+import { civilDate, compareDates, isWeekday, toProgrammeDate } from "@irp/core";
 import type { components } from "@irp/types";
 import type { EntryRepo, DailyReportRecord } from "../db/entry-repo.js";
 import type { UserRepo } from "../db/user-repo.js";
 import type { MentorRecordRepo, MentorDayRecordShape } from "../db/mentor-record-repo.js";
 import type { DayService } from "../services/day-service.js";
-import { StudentNotFoundError, WeekendDayRecordError } from "../domain/errors.js";
+import { StudentNotFoundError, WeekendDayRecordError, FutureDayRecordError } from "../domain/errors.js";
 import { requireAdmin } from "../plugins/roles.js";
 import { toApiEntryForMentor } from "./entries.js";
 import { REPORT_STATUS_TO_API, resolveRange, toApiDay, DAYS_QUERY } from "./me-days.js";
@@ -82,6 +82,9 @@ export const reviewRoutes: FastifyPluginAsync<{
       await resolveStudent(opts.userRepo, req.params.id);
       const date = civilDate(req.params.date);
       if (!isWeekday(date)) throw new WeekendDayRecordError(req.params.date);
+      if (compareDates(date, toProgrammeDate(new Date())) > 0) {
+        throw new FutureDayRecordError(req.params.date);
+      }
       const record = await opts.mentorRecordRepo.upsert({
         studentId: req.params.id,
         date,

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { isWeekday, previousWeekday, toProgrammeDate, type CivilDate } from "@irp/core";
+import { addDays, isWeekday, nextWeekday, previousWeekday, toProgrammeDate, type CivilDate } from "@irp/core";
 import { buildTestServer } from "./helpers/build-test-server.js";
 import { resolveRange } from "../src/routes/me-days.js";
 import { resetDb } from "./helpers/db.js";
@@ -57,6 +57,13 @@ interface DaySummaryLike {
 function weekdayInWindow(): CivilDate {
   const today = toProgrammeDate(new Date());
   return isWeekday(today) ? today : previousWeekday(today);
+}
+
+// nextWeekday always returns a date strictly after today (mirroring
+// previousWeekday's own documented "strictly before" guarantee), so this is
+// deterministic regardless of which real-world day this suite runs on.
+function futureWeekday(): CivilDate {
+  return nextWeekday(toProgrammeDate(new Date()));
 }
 
 // A known Monday (confirmed by `absence-repo.test.ts`'s own MONDAY constant)
@@ -159,6 +166,31 @@ describe.skipIf(!dbUrl)(
 
         const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
         expect(row.status).toBe("EVALUATED");
+        expect(row.evaluatedAt).not.toBeNull();
+      });
+
+      it("moves Submitted directly to Evaluated (200) -- a manual InReview step is no longer required", async () => {
+        const { reportId } = await submittedReportId("rev-t7-student");
+        const m = await mentor("rev-t7-mentor");
+
+        const res = await app.inject({
+          method: "POST",
+          url: `/api/v1/daily-reports/${reportId}/transition`,
+          headers: bearer(await signToken({ oid: "rev-t7-mentor" })),
+          payload: { to: "Evaluated" },
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json<DailyReportLike>();
+        expect(body.status).toBe("Evaluated");
+
+        const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
+        expect(row.status).toBe("EVALUATED");
+        expect(row.reviewedById).toBe(m.id);
+        // Backfilled to the same instant as evaluatedAt, since review and
+        // evaluation happened in the same step here -- not left null just
+        // because no separate InReview step ever ran.
+        expect(row.inReviewAt).not.toBeNull();
         expect(row.evaluatedAt).not.toBeNull();
       });
 
@@ -318,6 +350,37 @@ describe.skipIf(!dbUrl)(
         expect(res.headers["content-type"]).toContain("application/problem+json");
         const body = res.json<ProblemLike>();
         expect(body.type).toBe("https://irp.bistec.example/problems/weekend-day-record");
+      });
+
+      it("rejects a date after today with 400 future-day-record — nothing to attend yet", async () => {
+        const s = await student("rev-d7-student");
+        await mentor("rev-d7-mentor");
+
+        const res = await app.inject({
+          method: "PUT",
+          url: `/api/v1/students/${s.id}/day-records/${futureWeekday()}`,
+          headers: bearer(await signToken({ oid: "rev-d7-mentor" })),
+          payload: { attended: true, tasksCompleted: true },
+        });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.headers["content-type"]).toContain("application/problem+json");
+        const body = res.json<ProblemLike>();
+        expect(body.type).toBe("https://irp.bistec.example/problems/future-day-record");
+      });
+
+      it("accepts the boundary weekday (today's own, if today is one) — not just comfortably in the past", async () => {
+        const s = await student("rev-d8-student");
+        await mentor("rev-d8-mentor");
+
+        const res = await app.inject({
+          method: "PUT",
+          url: `/api/v1/students/${s.id}/day-records/${weekdayInWindow()}`,
+          headers: bearer(await signToken({ oid: "rev-d8-mentor" })),
+          payload: { attended: true, tasksCompleted: true },
+        });
+
+        expect(res.statusCode).toBe(200);
       });
 
       it("rejects an unknown student id with 404 student-not-found", async () => {
@@ -486,6 +549,41 @@ describe.skipIf(!dbUrl)(
         const body = res.json<DaySummaryLike[]>();
         expect(body[0]!.date).toBe(from);
         expect(body.at(-1)!.date).toBe(to);
+      });
+
+      it("caps the default range at today, not the cycle's end — a future day has nothing to review yet", async () => {
+        const s = await student("rev-s2b-student");
+        await mentor("rev-s2b-mentor");
+        const today = toProgrammeDate(new Date());
+
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/students/${s.id}/days`,
+          headers: bearer(await signToken({ oid: "rev-s2b-mentor" })),
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json<DaySummaryLike[]>();
+        // The list runs one contiguous day at a time from `from` to `to` --
+        // asserting the last entry is today is enough to prove nothing past
+        // it (e.g. the cycle's actual end date) is included by default.
+        expect(body.at(-1)!.date).toBe(today);
+      });
+
+      it("still returns days after today when the caller asks for them explicitly via `to`", async () => {
+        const s = await student("rev-s2c-student");
+        await mentor("rev-s2c-mentor");
+        const future = addDays(toProgrammeDate(new Date()), 5);
+
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/students/${s.id}/days?to=${future}`,
+          headers: bearer(await signToken({ oid: "rev-s2c-mentor" })),
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json<DaySummaryLike[]>();
+        expect(body.at(-1)!.date).toBe(future);
       });
 
       it("rejects an unknown student id with 404 student-not-found", async () => {

@@ -167,6 +167,15 @@ export class WeekendDayRecordError extends DomainError {
   }
 }
 
+export class FutureDayRecordError extends DomainError {
+  readonly code = "future-day-record";
+  readonly status = 400;
+  readonly title = "That day has not happened yet";
+  constructor(date: string) {
+    super(`${date} is in the future — there is nothing to attend yet (FR-19).`);
+  }
+}
+
 export class StudentNotFoundError extends DomainError {
   readonly code = "student-not-found";
   readonly status = 404;
