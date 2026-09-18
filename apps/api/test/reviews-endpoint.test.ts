@@ -41,7 +41,14 @@ interface DaySummaryLike {
   reportStatus: string | null;
   reportId: string | null;
   absenceReason: string | null;
-  entries: { id: string; entryDate: string; body: string }[];
+  entries: {
+    id: string;
+    entryDate: string;
+    body: string;
+    score: number | null;
+    mentorFeedback: string | null;
+    countsTowardEvaluation: boolean;
+  }[];
 }
 
 // Same construction `absences-endpoint.test.ts` uses: a weekday still inside
@@ -509,6 +516,52 @@ describe.skipIf(!dbUrl)(
         expect(res.headers["content-type"]).toContain("application/problem+json");
         const body = res.json<ProblemLike>();
         expect(body.type).toBe("https://irp.bistec.example/problems/admin-only");
+      });
+
+      it("returns the three review fields on each entry, reflecting a mentor's review", async () => {
+        const s = await student("rev-s5-student");
+        await mentor("rev-s5-mentor");
+        const mentorHeader = bearer(await signToken({ oid: "rev-s5-mentor" }));
+        const target = weekdayInWindow();
+
+        const entryRes = await app.inject({
+          method: "POST",
+          url: "/api/v1/entries",
+          headers: bearer(await signToken({ oid: "rev-s5-student" })),
+          payload: { entryDate: target, body: "Entry awaiting review." },
+        });
+        expect(entryRes.statusCode).toBe(200);
+        const entryId = entryRes.json<{ id: string }>().id;
+
+        const before = await app.inject({
+          method: "GET",
+          url: `/api/v1/students/${s.id}/days?from=${target}&to=${target}`,
+          headers: mentorHeader,
+        });
+        expect(before.statusCode).toBe(200);
+        const beforeEntry = before.json<DaySummaryLike[]>()[0]!.entries[0]!;
+        expect(beforeEntry.score).toBeNull();
+        expect(beforeEntry.mentorFeedback).toBeNull();
+        expect(beforeEntry.countsTowardEvaluation).toBe(false);
+
+        const reviewRes = await app.inject({
+          method: "PUT",
+          url: `/api/v1/entries/${entryId}/review`,
+          headers: mentorHeader,
+          payload: { score: 92, feedback: "Excellent detail.", countsTowardEvaluation: true },
+        });
+        expect(reviewRes.statusCode).toBe(200);
+
+        const after = await app.inject({
+          method: "GET",
+          url: `/api/v1/students/${s.id}/days?from=${target}&to=${target}`,
+          headers: mentorHeader,
+        });
+        expect(after.statusCode).toBe(200);
+        const afterEntry = after.json<DaySummaryLike[]>()[0]!.entries[0]!;
+        expect(afterEntry.score).toBe(92);
+        expect(afterEntry.mentorFeedback).toBe("Excellent detail.");
+        expect(afterEntry.countsTowardEvaluation).toBe(true);
       });
     });
   },

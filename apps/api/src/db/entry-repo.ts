@@ -5,6 +5,7 @@ import {
   LockedDayError,
   ReportNotFoundError,
   InvalidTransitionError,
+  EntryNotFoundError,
 } from "../domain/errors.js";
 import type { DailyReportStatus, PrismaClient } from "../generated/prisma/client.js";
 import { fromDbDate, toDbDate } from "./civil-date-map.js";
@@ -30,6 +31,9 @@ export interface EntryRecord {
   submittedAt: Date;
   isLate: boolean;
   isExtra: boolean;
+  score: number | null;
+  mentorFeedback: string | null;
+  countsTowardEvaluation: boolean;
 }
 
 export interface DailyReportRecord {
@@ -59,11 +63,23 @@ export interface EntryRepo {
     mentorId: string,
     now: Date,
   ): Promise<DailyReportRecord>;
+  /**
+   * A mentor's full-replace review of one entry (FR-10/FR-11/FR-19,
+   * ASSUMPTION: O-18): score, feedback, and the evaluation-inclusion flag are
+   * set together in one write. Same lock shape as `addEntry` — resolves the
+   * entry's parent `DailyReport` by (studentId, entryDate) and throws
+   * `LockedDayError` if it is `EVALUATED` (FR-20).
+   */
+  reviewEntry(
+    id: string,
+    input: { score: number; mentorFeedback: string; countsTowardEvaluation: boolean },
+  ): Promise<EntryRecord>;
 }
 
 interface DbEntry {
   id: string; studentId: string; entryDate: Date; body: string;
   submittedAt: Date; isLate: boolean; isExtra: boolean;
+  score: number | null; mentorFeedback: string | null; countsTowardEvaluation: boolean;
 }
 
 function mapEntry(e: DbEntry): EntryRecord {
@@ -75,6 +91,9 @@ function mapEntry(e: DbEntry): EntryRecord {
     submittedAt: e.submittedAt,
     isLate: e.isLate,
     isExtra: e.isExtra,
+    score: e.score,
+    mentorFeedback: e.mentorFeedback,
+    countsTowardEvaluation: e.countsTowardEvaluation,
   };
 }
 
@@ -196,6 +215,33 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
       }
       const r = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
       return { id: r.id, studentId: r.studentId, reportDate: fromDbDate(r.reportDate), status: r.status };
+    },
+
+    async reviewEntry(id, input) {
+      return prisma.$transaction(async (tx) => {
+        const entry = await tx.entry.findUnique({ where: { id } });
+        if (!entry) throw new EntryNotFoundError(id);
+
+        const entryDate = fromDbDate(entry.entryDate);
+        await lockStudentDay(tx, entry.studentId, entryDate);
+
+        const report = await tx.dailyReport.findUnique({
+          where: { studentId_reportDate: { studentId: entry.studentId, reportDate: entry.entryDate } },
+        });
+        if (report?.status === "EVALUATED") {
+          throw new LockedDayError(entryDate);
+        }
+
+        const updated = await tx.entry.update({
+          where: { id },
+          data: {
+            score: input.score,
+            mentorFeedback: input.mentorFeedback,
+            countsTowardEvaluation: input.countsTowardEvaluation,
+          },
+        });
+        return mapEntry(updated);
+      });
     },
   };
 }

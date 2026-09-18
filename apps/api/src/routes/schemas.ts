@@ -136,3 +136,14 @@ export const STUDENT_DATE_PARAM = {
     date: { type: "string", format: "date" },
   },
 } as const;
+
+export const ENTRY_REVIEW_BODY = {
+  type: "object",
+  required: ["score", "feedback", "countsTowardEvaluation"],
+  additionalProperties: false,
+  properties: {
+    score: { type: "integer", minimum: 0, maximum: 100 },
+    feedback: { type: "string", maxLength: 500 },
+    countsTowardEvaluation: { type: "boolean" },
+  },
+} as const;

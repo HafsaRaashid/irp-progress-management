@@ -212,6 +212,15 @@ export class UserNotFoundError extends DomainError {
   }
 }
 
+export class EntryNotFoundError extends DomainError {
+  readonly code = "entry-not-found";
+  readonly status = 404;
+  readonly title = "Entry not found";
+  constructor(id: string) {
+    super(`No entry exists with id ${id}.`);
+  }
+}
+
 export class InvalidCycleError extends DomainError {
   readonly code = "invalid-cycle";
   readonly status = 400;

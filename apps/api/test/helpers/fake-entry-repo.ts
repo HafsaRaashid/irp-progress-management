@@ -18,5 +18,6 @@ export function unusedEntryRepo(): EntryRepo {
     listEntriesForStudents: unused,
     listReportsForStudents: unused,
     transition: unused,
+    reviewEntry: unused,
   };
 }

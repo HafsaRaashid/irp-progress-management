@@ -6,24 +6,37 @@ import {
 import type { components } from "@irp/types";
 import type { DayService, DayView } from "../services/day-service.js";
 import type { DailyReportStatus } from "../generated/prisma/client.js";
+import type { EntryRecord } from "../db/entry-repo.js";
 import { HttpError } from "../errors.js";
 import { toApiEntry } from "./entries.js";
 
-type ApiDaySummary = components["schemas"]["DaySummary"];
+type ApiStudentDaySummary = components["schemas"]["StudentDaySummary"];
 
 export const REPORT_STATUS_TO_API: Record<
   DailyReportStatus,
   "Submitted" | "InReview" | "Evaluated"
 > = { SUBMITTED: "Submitted", IN_REVIEW: "InReview", EVALUATED: "Evaluated" };
 
-export function toApiDay(v: DayView): ApiDaySummary {
+/**
+ * Shared day-assembly, parameterised over the entry mapper so a score never
+ * reaches a student response (spec §4's correctness-critical split). `E` is
+ * inferred from `entryMapper`'s return type -- when called with no second
+ * argument it defaults to `toApiEntry` (student-safe), so the return type is
+ * genuinely `StudentDaySummary`-shaped, not `DaySummary`-shaped-with-fields-
+ * omitted-at-runtime. `reviews.ts` passes `toApiEntryForMentor` explicitly to
+ * get the `DaySummary` (mentor) shape instead.
+ */
+export function toApiDay<E = ReturnType<typeof toApiEntry>>(
+  v: DayView,
+  entryMapper: (e: EntryRecord) => E = toApiEntry as unknown as (e: EntryRecord) => E,
+) {
   return {
     date: v.date,
     status: v.status,
     reportId: v.reportId,
     reportStatus: v.reportStatus === null ? null : REPORT_STATUS_TO_API[v.reportStatus],
     absenceReason: v.absenceReason,
-    entries: v.entries.map(toApiEntry),
+    entries: v.entries.map(entryMapper),
   };
 }
 
@@ -60,11 +73,11 @@ export const meDaysRoutes: FastifyPluginAsync<{ dayService: DayService }> = asyn
   app.get<{ Querystring: { from?: string; to?: string } }>(
     "/api/v1/me/days",
     { schema: { querystring: DAYS_QUERY }, preHandler: [app.authenticate] },
-    async (req): Promise<ApiDaySummary[]> => {
+    async (req): Promise<ApiStudentDaySummary[]> => {
       const now = new Date();
       const { from, to } = resolveRange(req.query.from, req.query.to, now);
       const days = await opts.dayService.listDays(req.user!.id, from, to, now);
-      return days.map(toApiDay);
+      return days.map((v) => toApiDay(v));
     },
   );
 };

@@ -5,6 +5,7 @@ import type { BatchRepo, BatchRecord } from "../db/batch-repo.js";
 import type { RosterService } from "../services/roster-service.js";
 import { InvalidBatchDatesError } from "../domain/errors.js";
 import { requireAdmin } from "../plugins/roles.js";
+import { toApiEntryForMentor } from "./entries.js";
 import { toApiDay } from "./me-days.js";
 import { BATCH_CREATE_BODY, UUID_PARAM, ROSTER_QUERY } from "./schemas.js";
 
@@ -52,7 +53,9 @@ export const batchRoutes: FastifyPluginAsync<{
       const rows = await opts.rosterService.roster(req.params.id, date, now);
       return rows.map((r) => ({
         student: r.student,
-        day: toApiDay(r.day),
+        // Mentor-only endpoint (requireAdmin above): RosterRow.day is
+        // DaySummary, whose entries carry the mentor review fields.
+        day: toApiDay(r.day, toApiEntryForMentor),
         hasMentorRecord: r.hasMentorRecord,
         extraCountThisCycle: r.extraCountThisCycle,
       }));
