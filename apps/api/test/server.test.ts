@@ -14,6 +14,7 @@ import { unusedMentorRecordRepo } from "./helpers/fake-mentor-record-repo.js";
 import { unusedDayService } from "./helpers/fake-day-service.js";
 import { unusedRosterService } from "./helpers/fake-roster-service.js";
 import { unusedDashboardService } from "./helpers/fake-dashboard-service.js";
+import { unusedNotificationService } from "./helpers/fake-notification-service.js";
 import { unusedPrisma } from "./helpers/fake-prisma.js";
 import { problemSchema } from "./helpers/problem-schema.js";
 import { getLocalKeySet, signToken, testIssuer, testAudience } from "./helpers/keys.js";
@@ -30,6 +31,7 @@ beforeAll(async () => {
     config: {
       port: 3001, databaseUrl: "unused", jwksUri: "unused",
       jwtIssuer: testIssuer, jwtAudience: testAudience, version: "0.0.0", nodeEnv: "test",
+      teamsWebhookUrl: undefined, smtp: undefined, webBaseUrl: "http://localhost:3100",
     },
     userRepo: fakeUserRepo([{ id: "u1", externalId: "oid-1", email: "a@bistecglobal.com", displayName: "Amaya", role: "STUDENT" }]),
     entryRepo: unusedEntryRepo(),
@@ -39,6 +41,7 @@ beforeAll(async () => {
     dayService: unusedDayService(),
     rosterService: unusedRosterService(),
     dashboardService: unusedDashboardService(),
+    notificationService: unusedNotificationService(),
     getKey,
     tracerProvider: createTracerProvider(new InMemorySpanExporter()),
     prisma: unusedPrisma(),

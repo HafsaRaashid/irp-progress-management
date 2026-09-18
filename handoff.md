@@ -587,7 +587,7 @@ begins. Plans live in `docs/superpowers/plans/`, specs in `docs/superpowers/spec
 | | 7 · Dashboards | T-14, T-15 | SC-4 | ✅ **Merged, PR #12.** Three dashboard endpoints, mentor Today + Cycles, student My month, the typography migration audit, `dashboard-flows.spec.ts`, and `docs/walkthrough.md`. Plan: `docs/superpowers/plans/2026-08-03-plan-7-dashboards.md` · Spec: `docs/superpowers/specs/2026-08-02-slice-2-product-design.md` |
 | | *(UI follow-ups to 7 — no new T-numbers)* | — | — | ✅ **Merged, PRs #13–#17.** Design-system pass (#13); roster legibility + `Batch 1`/`Batch 2` seed rename (#14); the collapsed ribbon key and `workers: 1` (#15, ADR-0020); **7A** Settings page, theme by cookie, verified dark (#16, ADR-0021/0022); **7B** frame and brand — sidebar icons, the logo, Sign out relocated, `Create batch` returned to Students (#17, ADR-0023). 7A and 7B carry their own plan/spec pairs under `docs/superpowers/` |
 | | *(developer-environment chore)* | — | — | ✅ **Merged, PR #18.** Web dev server moved 3000 → **3100**; container-internal ports deliberately unchanged. No FR — see CLAUDE.md's **Local ports** rule |
-| **3 — Evaluation** | 8 · Notifications | T-16 | — | Not started |
+| **3 — Evaluation** | 8 · Notifications | T-16 | — | 🚧 **PR #2 open, not yet merged.** `NotificationService` + Teams webhook + SMTP senders, wired fire-and-forget into entry submission, absence marking, and daily-report transitions; full test suite green. Plan: `docs/superpowers/plans/2026-09-15-plan-8-notifications.md` · Spec: `docs/superpowers/specs/2026-09-11-plan-8-notifications-design.md` · ADRs: 0024 (Teams webhook), 0025 (SMTP via M365) |
 | | 9 · AI evaluation | T-17 | — | **Blocked on O-5** |
 | | 10 · Winner + PDF | T-18 | — | Not started |
 | **4 — Proving it** | 11 · Load test + retro | T-24 – T-26 | D4 | Not started — and cannot start meaningfully until the deploy runbook's §1 bootstrap is run: NFR-1/NFR-2's k6 targets need a deployed URL, and NFR-3 needs the Entra directory this plan deferred a fourth time |
@@ -667,8 +667,9 @@ Fix every P1/P2 from the stakeholder demo · Dependabot + weekly patch rotation 
 
 ## 3. Current position
 
-**Everything through Plan 7B is merged. `main` is at PR #18 (`5e99498`, 2026-08-18) and there is no
-work in flight** — no open branch, no open PR, nothing half-landed.
+**Everything through Plan 7B is merged. `main` is at PR #18 (`5e99498`, 2026-08-18).** Plan 8
+(Notifications) is implemented on branch `feat/plan-8-notifications` (2026-09-15) and open as
+**PR #2**, awaiting review and merge — see the row in §2a and the "next action" note below.
 
 Plan 7 itself merged as **PR #12** (three dashboard endpoints — `GET
 /api/v1/batches/{id}/dashboard/today`, `GET /api/v1/batches/{id}/dashboard/summary`, `GET
@@ -680,12 +681,13 @@ collapsed ribbon key and `workers: 1` · **#16** Plan 7A, the Settings page and 
 **#17** Plan 7B, the frame and brand · **#18** the dev-server port move to 3100. See §2a for what
 each covers.
 
-**The next action is a decision, not a task.** Slice 2 is complete and slice 3's three plans are
-either not started (8, 10) or blocked (9, on O-5). The two things that would unblock the most are
-both outside the code: running the deploy runbook's §1 bootstrap (Deliverable 3 is still
-apply-ready, not applied — see below) and getting a decision on **O-5**, the AI provider, which
-gates Plan 9 and touches personal data. Neither is something the next session can simply pick up
-and start writing.
+**The next action is reviewing and merging Plan 8's PR #2** — the branch is implemented and its
+full test suite is green. After that, slice 3's remaining two plans are either not started
+(10, and it depends on Plan 9's scores) or blocked (9, on O-5). The two things that would unblock
+the most beyond Plan 8 are both outside the code: running the deploy runbook's §1 bootstrap
+(Deliverable 3 is still apply-ready, not applied — see below) and getting a decision on **O-5**, the
+AI provider, which gates Plan 9 and touches personal data. Neither is something the next session can
+simply pick up and start writing.
 
 **Housekeeping owed before the next plan starts:** archive `.superpowers/sdd/` into
 `.superpowers/sdd/plan-7b/` and reset `progress.md`, per CLAUDE.md. The directory is git-ignored,
