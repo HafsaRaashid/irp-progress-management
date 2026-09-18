@@ -9,6 +9,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { formatCivilDateLabel } from "../../format-civil-date";
 import { TransitionControl } from "./transition-control";
 import { DayRecordForm } from "./day-record-form";
+import { EntryReviewForm } from "./entry-review-form";
 
 const ENTRY_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Colombo",
@@ -164,15 +165,36 @@ export default async function StudentReviewPage({
                 )}
 
                 {day.entries.map((entry) => (
-                  <div key={entry.id} className="mb-3 flex items-start justify-between gap-3">
-                    <p className="prose" style={{ color: "var(--ink)" }}>{entry.body}</p>
-                    <div
-                      className="flex shrink-0 items-center gap-2 text-sm"
-                      style={{ color: "var(--ink-muted)" }}
-                    >
-                      <span>{ENTRY_TIME_FORMAT.format(new Date(entry.submittedAt))}</span>
-                      <StatusPill status={entry.isLate ? "late" : entry.isExtra ? "extra" : "onTime"} />
+                  <div key={entry.id} className="mb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="prose" style={{ color: "var(--ink)" }}>{entry.body}</p>
+                      <div
+                        className="flex shrink-0 items-center gap-2 text-sm"
+                        style={{ color: "var(--ink-muted)" }}
+                      >
+                        <span>{ENTRY_TIME_FORMAT.format(new Date(entry.submittedAt))}</span>
+                        <StatusPill status={entry.isLate ? "late" : entry.isExtra ? "extra" : "onTime"} />
+                      </div>
                     </div>
+                    {/*
+                      FR-20: an Evaluated day is locked -- the API 409s a
+                      review write against it (LockedDayError), so the
+                      control is withheld entirely rather than offered and
+                      failing on submit. Unlike DayRecordForm, this is not
+                      restricted to weekdays -- a weekend (Extra) entry is
+                      just as reviewable as a weekday one.
+                    */}
+                    {day.reportStatus !== "Evaluated" && (
+                      <EntryReviewForm
+                        studentId={studentId}
+                        entryId={entry.id}
+                        defaults={{
+                          score: entry.score,
+                          mentorFeedback: entry.mentorFeedback,
+                          countsTowardEvaluation: entry.countsTowardEvaluation,
+                        }}
+                      />
+                    )}
                   </div>
                 ))}
 

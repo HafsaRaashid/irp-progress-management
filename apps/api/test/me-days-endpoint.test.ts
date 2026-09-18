@@ -202,6 +202,43 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
     expect(body.type).toBe("https://irp.bistec.example/problems/unauthorized");
   });
 
+  it("never includes score or countsTowardEvaluation on an entry, even after a mentor reviews it — a student must not receive either key", async () => {
+    await student("md-7");
+    await mentor("md-7-mentor");
+    const today = toProgrammeDate(new Date());
+
+    const posted = await app.inject({
+      method: "POST",
+      url: "/api/v1/entries",
+      headers: bearer(await signToken({ oid: "md-7" })),
+      payload: { entryDate: today, body: "Entry that will be reviewed." },
+    });
+    expect(posted.statusCode).toBe(200);
+    const entryId = posted.json<{ id: string }>().id;
+
+    const reviewRes = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: bearer(await signToken({ oid: "md-7-mentor" })),
+      payload: { score: 77, feedback: "Reviewed.", countsTowardEvaluation: true },
+    });
+    expect(reviewRes.statusCode).toBe(200);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/me/days?from=${today}&to=${today}`,
+      headers: bearer(await signToken({ oid: "md-7" })),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.payload).not.toContain("score");
+    expect(res.payload).not.toContain("countsTowardEvaluation");
+    const entry = res.json<DaySummaryLike[]>()[0]!.entries[0]!;
+    expect(Object.keys(entry).sort()).toEqual(
+      ["body", "entryDate", "id", "isExtra", "isLate", "submittedAt"].sort(),
+    );
+  });
+
   it("gives a mentor a uniform 'none' list rather than 403 or 'missed' — mentors have no enrolment days", async () => {
     await mentor("md-mentor");
     const { from, to } = resolveRange();

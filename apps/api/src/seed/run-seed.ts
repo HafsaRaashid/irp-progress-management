@@ -268,6 +268,33 @@ export async function runSeed(prisma: PrismaClient, now: Date): Promise<void> {
     });
   }
 
+  // ── one already-seeded entry gets a review write ─────────────────────────
+  // ASSUMPTION: O-18 — mentor-scored submissions (score/mentorFeedback/
+  // countsTowardEvaluation) replace the AI-scored-cycle pipeline (FR-22-24),
+  // pending mentor sign-off (docs/interview-and-prd.md §5). Plan 9's own
+  // risk table (and the student-feedback-visibility spec that follows it)
+  // requires at least one entry with feedback in seed data so that later
+  // spec's E2E case has something to observe. `entryRepo.reviewEntry()`
+  // doesn't exist until Plan 9 Task 2, so this writes directly via
+  // `prisma.entry.update` against a real, already-created entry's id rather
+  // than fabricating one.
+  const reviewSubject = studentRows.get("dev-student-1")!;
+  const entryToReview = await prisma.entry.findFirst({
+    where: { studentId: reviewSubject.id },
+    orderBy: [{ entryDate: "desc" }, { submittedAt: "desc" }],
+  });
+  if (entryToReview) {
+    await prisma.entry.update({
+      where: { id: entryToReview.id },
+      data: {
+        score: 88,
+        mentorFeedback:
+          "Solid write-up — the PDF edge-case handling shows you're thinking about robustness, not just the happy path.",
+        countsTowardEvaluation: true,
+      },
+    });
+  }
+
   // ── archive + cycles ─────────────────────────────────────────────────────
   const archived = SEED_STUDENTS.find((s) => s.kind === "archived")!;
   await prisma.user.update({

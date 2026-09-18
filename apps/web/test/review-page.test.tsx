@@ -13,17 +13,25 @@ const { getCurrentUserOrRedirect, apiClient } = vi.hoisted(() => ({
 vi.mock("@/lib/api-client", () => ({ getCurrentUserOrRedirect, apiClient }));
 
 // review-actions.ts (unmocked -- exercised for real, same as the SDK-level
-// mocking roster-page.test.tsx uses) calls transitionDailyReport and
-// upsertDayRecord; page.tsx itself calls listStudentDays, listUsers, and
-// listDayRecords. All five are mocked here so the whole tree -- page,
-// TransitionControl, DayRecordForm, and the server actions underneath them --
-// runs without a real client or network access.
-const { listStudentDays, listUsers, listDayRecords, transitionDailyReport, upsertDayRecord } = vi.hoisted(() => ({
+// mocking roster-page.test.tsx uses) calls transitionDailyReport,
+// upsertDayRecord, and reviewEntry; page.tsx itself calls listStudentDays,
+// listUsers, and listDayRecords. All six are mocked here so the whole tree --
+// page, TransitionControl, DayRecordForm, EntryReviewForm, and the server
+// actions underneath them -- runs without a real client or network access.
+const {
+  listStudentDays,
+  listUsers,
+  listDayRecords,
+  transitionDailyReport,
+  upsertDayRecord,
+  reviewEntry,
+} = vi.hoisted(() => ({
   listStudentDays: vi.fn(),
   listUsers: vi.fn(),
   listDayRecords: vi.fn(),
   transitionDailyReport: vi.fn(),
   upsertDayRecord: vi.fn(),
+  reviewEntry: vi.fn(),
 }));
 vi.mock("@irp/client", () => ({
   listStudentDays,
@@ -31,6 +39,7 @@ vi.mock("@irp/client", () => ({
   listDayRecords,
   transitionDailyReport,
   upsertDayRecord,
+  reviewEntry,
 }));
 
 // redirect() in real Next never returns -- it throws a special NEXT_REDIRECT
@@ -156,7 +165,17 @@ describe("StudentReviewPage", () => {
           reportId: "r-a",
           absenceReason: null,
           entries: [
-            { id: "e1", entryDate: "2026-07-28", body: "Wrote the review page.", submittedAt: "2026-07-28T04:00:00.000Z", isLate: false, isExtra: false },
+            {
+              id: "e1",
+              entryDate: "2026-07-28",
+              body: "Wrote the review page.",
+              submittedAt: "2026-07-28T04:00:00.000Z",
+              isLate: false,
+              isExtra: false,
+              score: 88,
+              mentorFeedback: "Already reviewed before the lock.",
+              countsTowardEvaluation: true,
+            },
           ],
         },
       ],
@@ -169,6 +188,10 @@ describe("StudentReviewPage", () => {
     expect(screen.queryByRole("button", { name: "Start review" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mark evaluated" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save record" })).not.toBeInTheDocument();
+    // FR-20: the API 409s a review write on a locked day, so the review
+    // control is withheld entirely rather than offered and failing on
+    // submit -- same treatment as the day-record form above.
+    expect(screen.queryByRole("button", { name: "Save review" })).not.toBeInTheDocument();
   });
 
   it("shows a Start review control for a Submitted day", async () => {
@@ -228,6 +251,99 @@ describe("StudentReviewPage", () => {
     // The transition control is independent of weekday -- a report exists
     // whenever an entry exists, weekend or not.
     expect(screen.getByRole("button", { name: "Start review" })).toBeInTheDocument();
+  });
+
+  it("prefills the review control from the entry's current review -- reopening must not start blank", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
+    noStoredRecords();
+    listStudentDays.mockResolvedValue({
+      data: [
+        {
+          date: "2026-07-28",
+          status: "onTime",
+          reportStatus: "InReview",
+          reportId: "r-e",
+          absenceReason: null,
+          entries: [
+            {
+              id: "e1",
+              entryDate: "2026-07-28",
+              body: "Wrote the review page.",
+              submittedAt: "2026-07-28T04:00:00.000Z",
+              isLate: false,
+              isExtra: false,
+              score: 88,
+              mentorFeedback: "Solid detail.",
+              countsTowardEvaluation: true,
+            },
+          ],
+        },
+      ],
+      error: undefined,
+    });
+
+    render(await StudentReviewPage({ params: params() }));
+
+    expect(screen.getByLabelText("Score, 0 to 100")).toHaveValue(88);
+    expect(screen.getByLabelText("Mentor feedback")).toHaveValue("Solid detail.");
+    expect(screen.getByLabelText("Counts toward evaluation")).toBeChecked();
+  });
+
+  it("surfaces the review action's rejection as role=alert", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
+    noStoredRecords();
+    listStudentDays.mockResolvedValue({
+      data: [
+        {
+          date: "2026-07-28",
+          status: "onTime",
+          reportStatus: "Submitted",
+          reportId: "r-f",
+          absenceReason: null,
+          entries: [
+            {
+              id: "e1",
+              entryDate: "2026-07-28",
+              body: "Wrote the review page.",
+              submittedAt: "2026-07-28T04:00:00.000Z",
+              isLate: false,
+              isExtra: false,
+              score: null,
+              mentorFeedback: null,
+              countsTowardEvaluation: false,
+            },
+          ],
+        },
+      ],
+      error: undefined,
+    });
+    reviewEntry.mockResolvedValueOnce({
+      data: undefined,
+      error: {
+        type: "about:blank",
+        title: "Conflict",
+        status: 409,
+        detail: "The day is locked.",
+        traceId: "t4",
+      },
+    });
+
+    render(await StudentReviewPage({ params: params() }));
+
+    fireEvent.change(screen.getByLabelText("Score, 0 to 100"), { target: { value: "70" } });
+    fireEvent.change(screen.getByLabelText("Mentor feedback"), { target: { value: "Fine." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save review" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The day is locked.");
+    expect(reviewEntry).toHaveBeenCalledWith({
+      client: {},
+      path: { id: "e1" },
+      body: { score: 70, feedback: "Fine.", countsTowardEvaluation: false },
+    });
   });
 
   it("surfaces the transition action's rejection as role=alert -- the discarded-error shape Task 12's review rejected", async () => {

@@ -7,6 +7,7 @@ import type { MentorRecordRepo, MentorDayRecordShape } from "../db/mentor-record
 import type { DayService } from "../services/day-service.js";
 import { StudentNotFoundError, WeekendDayRecordError } from "../domain/errors.js";
 import { requireAdmin } from "../plugins/roles.js";
+import { toApiEntryForMentor } from "./entries.js";
 import { REPORT_STATUS_TO_API, resolveRange, toApiDay, DAYS_QUERY } from "./me-days.js";
 import { TRANSITION_BODY, DAY_RECORD_BODY, UUID_PARAM, STUDENT_DATE_PARAM } from "./schemas.js";
 
@@ -102,7 +103,7 @@ export const reviewRoutes: FastifyPluginAsync<{
       const now = new Date();
       const { from, to } = resolveRange(req.query.from, req.query.to, now);
       const days = await opts.dayService.listDays(req.params.id, from, to, now);
-      return days.map(toApiDay);
+      return days.map((v) => toApiDay(v, toApiEntryForMentor));
     },
   );
 

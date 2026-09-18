@@ -153,11 +153,17 @@ paths:
               $ref: '#/components/schemas/EntryCreate'
       responses:
         '200':
-          description: The stored entry, with server-computed flags.
+          description: |
+            The stored entry, with server-computed flags — as seen by the
+            student who submitted it. `StudentEntry`, not `Entry`: only a
+            mentor may ever see this entry's `score`/`countsTowardEvaluation`
+            (hard boundary — no student-visible score), so those fields are
+            never present here even though they are necessarily null at the
+            moment of creation.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Entry'
+                $ref: '#/components/schemas/StudentEntry'
               examples:
                 onTime:
                   summary: Submitted on the target day
@@ -174,6 +180,75 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/entries/{id}/review:
+    put:
+      operationId: reviewEntry
+      summary: Score, feed back on, and flag one submission for evaluation
+      description: |
+        A mentor's review of one `Entry` (FR-10/FR-11/FR-19,
+        ASSUMPTION: O-18): a 0-100 score, free-text feedback, and whether the
+        submission counts toward the monthly evaluation. Scoring an entry
+        both reviews and approves it — there is no separate approval step.
+
+        Full-replace, like `upsertDayRecord`: all three fields are set
+        together in one `PUT`, and a second call fully replaces the first
+        rather than merging — the caller must resend every field on a
+        re-review, not just the one being changed.
+
+        Locked with the day: once the entry's `DailyReport` reaches
+        `Evaluated` (FR-20), this write is rejected (409) — the same
+        `LockedDayError` mechanism `createEntry` already enforces. Admin only;
+        a student token receives 403.
+      tags: [Reviews]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The entry id to review.
+          schema:
+            type: string
+            format: uuid
+            examples:
+              - 7be9f1d2-3c44-4f8a-9a01-2b3c4d5e6f70
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntryReview'
+      responses:
+        '200':
+          description: The entry, with the mentor's review applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entry'
+              examples:
+                reviewed:
+                  summary: A scored, evaluation-counting entry
+                  value:
+                    id: 7be9f1d2-3c44-4f8a-9a01-2b3c4d5e6f70
+                    entryDate: '2026-08-03'
+                    body: Implemented the roster endpoint and its tests.
+                    submittedAt: '2026-08-03T11:30:00.000Z'
+                    isLate: false
+                    isExtra: false
+                    score: 85
+                    mentorFeedback: Good detail on the endpoint work; next time note any blockers too.
+                    countsTowardEvaluation: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
         '500':
@@ -215,13 +290,18 @@ paths:
               - '2026-08-09'
       responses:
         '200':
-          description: The day-by-day view, oldest first.
+          description: |
+            The day-by-day view, oldest first. `StudentDaySummary`, not
+            `DaySummary`: its entries are `StudentEntry`, withholding the
+            mentor-only `score`/`countsTowardEvaluation` fields entirely (not
+            merely null) — the hard boundary that a student never sees a
+            score.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/DaySummary'
+                  $ref: '#/components/schemas/StudentDaySummary'
               examples:
                 twoDays:
                   summary: A submitted weekday and an untouched weekend day
@@ -534,6 +614,9 @@ paths:
                             submittedAt: '2026-08-03T11:30:00.000Z'
                             isLate: false
                             isExtra: false
+                            score: null
+                            mentorFeedback: null
+                            countsTowardEvaluation: false
                       hasMentorRecord: false
                       extraCountThisCycle: 0
         '400':
@@ -1225,6 +1308,9 @@ paths:
                           submittedAt: '2026-08-03T11:30:00.000Z'
                           isLate: false
                           isExtra: false
+                          score: 85
+                          mentorFeedback: Good detail on the endpoint work.
+                          countsTowardEvaluation: true
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1466,7 +1552,90 @@ components:
     Entry:
       type: object
       title: Entry
-      description: One stored entry with server-computed flags.
+      description: |
+        One stored entry with server-computed flags, as seen by a mentor.
+        `score`/`mentorFeedback`/`countsTowardEvaluation` are mentor-written
+        review fields (FR-10/FR-11/FR-19, per-submission review) — null/false
+        until a mentor reviews the entry via `reviewEntry`. **Never returned
+        to the student who owns the entry** — the student-facing equivalent
+        is `StudentEntry`, which omits `score` and `countsTowardEvaluation`
+        as a matter of schema, not merely as an unset value. ASSUMPTION: O-18.
+      required:
+        - id
+        - entryDate
+        - body
+        - submittedAt
+        - isLate
+        - isExtra
+        - score
+        - mentorFeedback
+        - countsTowardEvaluation
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Entry identifier.
+          examples:
+            - 7be9f1d2-3c44-4f8a-9a01-2b3c4d5e6f70
+        entryDate:
+          type: string
+          format: date
+          description: The civil date the entry targets.
+          examples:
+            - '2026-08-03'
+        body:
+          type: string
+          description: The submitted text.
+          examples:
+            - Implemented the roster endpoint and its tests.
+        submittedAt:
+          type: string
+          format: date-time
+          description: UTC instant the entry was accepted.
+          examples:
+            - '2026-08-03T11:30:00.000Z'
+        isLate:
+          type: boolean
+          description: True when a required day's entry arrived after that day ended but inside grace. Weekends are never late.
+          examples:
+            - false
+        isExtra:
+          type: boolean
+          description: True for entries on optional (weekend) days — FR-33.
+          examples:
+            - false
+        score:
+          oneOf:
+            - type: integer
+              minimum: 0
+              maximum: 100
+            - type: 'null'
+          description: The mentor's 0-100 score for this submission. Null until reviewed. Never shown to the student.
+          examples:
+            - 85
+        mentorFeedback:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: The mentor's free-text feedback on this submission. Null until reviewed.
+          examples:
+            - Good detail on the endpoint work; next time note any blockers too.
+        countsTowardEvaluation:
+          type: boolean
+          description: Whether this submission counts toward the monthly evaluation. False until a mentor explicitly ticks it in a review write.
+          examples:
+            - true
+
+    StudentEntry:
+      type: object
+      title: StudentEntry
+      description: |
+        One stored entry as seen by the student who owns it — everything
+        `Entry` has except the mentor-only `score` and
+        `countsTowardEvaluation` fields, which a student must never receive
+        (hard boundary: no student-visible score). Used by `listMyDays`;
+        `Entry` (with the mentor fields) is used by `listStudentDays`.
       required: [id, entryDate, body, submittedAt, isLate, isExtra]
       additionalProperties: false
       properties:
@@ -1573,6 +1742,52 @@ components:
           description: The day's entries, earliest first. Empty when nothing was submitted.
           items:
             $ref: '#/components/schemas/Entry'
+
+    StudentDaySummary:
+      type: object
+      title: StudentDaySummary
+      description: |
+        Everything on record for one student and one calendar day, as seen by
+        that student. Identical to `DaySummary` except `entries` holds
+        `StudentEntry` rather than `Entry` — withholding the mentor-only
+        `score`/`countsTowardEvaluation` fields entirely (hard boundary: no
+        student-visible score). Returned by `listMyDays`.
+      required: [date, status, reportStatus, reportId, absenceReason, entries]
+      additionalProperties: false
+      properties:
+        date:
+          type: string
+          format: date
+          description: The civil date (Asia/Colombo).
+          examples:
+            - '2026-07-31'
+        status:
+          $ref: '#/components/schemas/DayStatus'
+        reportStatus:
+          oneOf:
+            - $ref: '#/components/schemas/ReportStatus'
+            - type: 'null'
+          description: Review state of the day's report, or null when no entry has created one.
+        reportId:
+          oneOf:
+            - type: string
+              format: uuid
+            - type: 'null'
+          description: The DailyReport id, used by mentors to transition review state. Null until a first entry exists.
+          examples:
+            - 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
+        absenceReason:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: The recorded absence reason, when the day is marked absent.
+          examples:
+            - medical appointment
+        entries:
+          type: array
+          description: The day's entries, earliest first. Empty when nothing was submitted.
+          items:
+            $ref: '#/components/schemas/StudentEntry'
 
     AbsenceCreate:
       type: object
@@ -2327,6 +2542,37 @@ components:
           description: The mentor who recorded it.
           examples:
             - 9c8b7a6d-5e4f-4a3b-9182-7c6d5e4f3a2b
+
+    EntryReview:
+      type: object
+      title: EntryReview
+      description: |
+        A mentor's review of one submission (FR-10/FR-11/FR-19,
+        per-submission review, ASSUMPTION: O-18). Full-replace, like
+        `DayRecordUpsert` — score, feedback, and the evaluation-inclusion
+        flag are set together in one `PUT`, never three separate `PATCH`es,
+        and a second write fully replaces the first rather than merging.
+      required: [score, feedback, countsTowardEvaluation]
+      additionalProperties: false
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: The mentor's 0-100 score for this submission.
+          examples:
+            - 85
+        feedback:
+          type: string
+          maxLength: 500
+          description: The mentor's free-text feedback on this submission.
+          examples:
+            - Good detail on the endpoint work; next time note any blockers too.
+        countsTowardEvaluation:
+          type: boolean
+          description: Whether this submission counts toward the monthly evaluation. Never inferred — the mentor must explicitly tick it.
+          examples:
+            - true
 
   responses:
     BadRequest:

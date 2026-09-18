@@ -136,7 +136,10 @@ test.describe("mentor flows (dev-admin-1)", () => {
 
     await panel.getByRole("checkbox", { name: "Attended" }).check();
     await panel.getByRole("checkbox", { name: "Tasks completed" }).check();
-    await panel.getByRole("textbox").fill("E2E review note");
+    // By label, not role="textbox" -- EntryReviewForm's per-entry "Mentor
+    // feedback" textarea(s) now share this panel and the same role, so a
+    // bare getByRole("textbox") is ambiguous whenever the day holds an entry.
+    await panel.getByLabel(`Mentor note for ${isoDate}`).fill("E2E review note");
     await panel.getByRole("button", { name: "Save record" }).click();
 
     // Not asserting the transient "Record saved." text: this is this day's
@@ -154,7 +157,7 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await page.goto(page.url());
     await expect(panel.getByRole("checkbox", { name: "Attended" })).toBeChecked();
     await expect(panel.getByRole("checkbox", { name: "Tasks completed" })).toBeChecked();
-    await expect(panel.getByRole("textbox")).toHaveValue("E2E review note");
+    await expect(panel.getByLabel(`Mentor note for ${isoDate}`)).toHaveValue("E2E review note");
 
     await panel.getByRole("button", { name: "Start review" }).click();
     await expect(panel.getByText("In review")).toBeVisible();
@@ -167,6 +170,49 @@ test.describe("mentor flows (dev-admin-1)", () => {
     const lockedPanel = dayPanelByLabel(page, dateLabel);
     await expect(lockedPanel.getByText(/· Evaluated/)).toBeVisible();
     await expect(lockedPanel.getByRole("button")).toHaveCount(0);
+  });
+
+  test("reviews a submission's score/feedback/evaluation flag, and it persists on reload", async ({
+    page,
+  }) => {
+    // FR-10/FR-11/FR-19, ASSUMPTION: O-18. The previous test already proves
+    // an Evaluated day withholds every button in its panel, review control
+    // included (`lockedPanel.getByRole("button")).toHaveCount(0)`) -- this
+    // test only needs to prove the control works and its write survives a
+    // reload, the same "don't trust the client's optimistic view" standard
+    // the day-record test above applies.
+    await signInAsMentor(page);
+    await page.goto("/roster");
+    await switchToBatch(page, SEED_BATCH_NAMES.B);
+
+    const chamodiRow = page.locator("table tbody tr").filter({ hasText: "Chamodi Herath" });
+    await chamodiRow.getByRole("link", { name: "Review" }).click();
+    await expect(page).toHaveURL(/\/review\//);
+
+    const scoreInput = page.getByLabel("Score, 0 to 100").first();
+    await expect(scoreInput).toBeVisible();
+    const form = scoreInput.locator("xpath=ancestor::form[1]");
+    // Re-derived via the hidden entryId input rather than reused as a
+    // handle, the same reasoning dayPanelByHiddenDate documents -- this
+    // locator stays valid after the reload below re-renders the tree.
+    const entryId = await form.locator('input[type="hidden"][name="entryId"]').inputValue();
+
+    await form.getByLabel("Score, 0 to 100").fill("90");
+    await form.getByLabel("Mentor feedback").fill("E2E review feedback.");
+    await form.getByLabel("Counts toward evaluation").check();
+    await form.getByRole("button", { name: "Save review" }).click();
+    await expect(form.getByText("Review saved.")).toBeVisible();
+
+    // page.goto, not page.reload() -- reload() risks resubmitting the last
+    // Server Action form post as a genuine duplicate (same reasoning as the
+    // day-record test above).
+    await page.goto(page.url());
+    const reloadedForm = page.locator(
+      `xpath=//input[@type="hidden" and @name="entryId" and @value="${entryId}"]/ancestor::form[1]`,
+    );
+    await expect(reloadedForm.getByLabel("Score, 0 to 100")).toHaveValue("90");
+    await expect(reloadedForm.getByLabel("Mentor feedback")).toHaveValue("E2E review feedback.");
+    await expect(reloadedForm.getByLabel("Counts toward evaluation")).toBeChecked();
   });
 
   test("archives a non-self student, then restores the persona set via reseed", async ({ page }) => {

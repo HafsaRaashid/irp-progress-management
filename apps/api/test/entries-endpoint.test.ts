@@ -9,6 +9,8 @@ import { dbUrl } from "./helpers/require-db.js";
 
 const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
 
+const UNKNOWN_UUID = "00000000-0000-0000-0000-000000000000";
+
 interface ProblemLike {
   type: string;
   title: string;
@@ -23,6 +25,12 @@ interface EntryLike {
   submittedAt: string;
   isLate: boolean;
   isExtra: boolean;
+}
+
+interface ReviewedEntryLike extends EntryLike {
+  score: number | null;
+  mentorFeedback: string | null;
+  countsTowardEvaluation: boolean;
 }
 
 describe.skipIf(!dbUrl)("POST /api/v1/entries", () => {
@@ -221,5 +229,245 @@ describe.skipIf(!dbUrl)("POST /api/v1/entries", () => {
     expect(res.headers["content-type"]).toContain("application/problem+json");
     const body = res.json<ProblemLike>();
     expect(body.type).toBe("https://irp.bistec.example/problems/unauthorized");
+  });
+});
+
+describe.skipIf(!dbUrl)("PUT /api/v1/entries/:id/review", () => {
+  let app: FastifyInstance;
+  let prisma: Awaited<ReturnType<typeof buildTestServer>>["prisma"];
+
+  beforeAll(async () => {
+    ({ app, prisma } = await buildTestServer(dbUrl!));
+  });
+  beforeEach(async () => {
+    await resetDb(prisma);
+  });
+  afterAll(async () => {
+    await app.close();
+    await prisma.$disconnect();
+  });
+
+  async function student(externalId: string) {
+    return prisma.user.create({
+      data: { externalId, email: `${externalId}@dev.local`, displayName: externalId, role: "STUDENT" },
+    });
+  }
+
+  async function mentor(externalId: string) {
+    return prisma.user.create({
+      data: { externalId, email: `${externalId}@dev.local`, displayName: externalId, role: "ADMIN" },
+    });
+  }
+
+  function weekdayInWindow() {
+    const today = toProgrammeDate(new Date());
+    return isWeekday(today) ? today : previousWeekday(today);
+  }
+
+  async function submittedEntry(studentExternalId: string): Promise<{ studentId: string; entryId: string }> {
+    const s = await student(studentExternalId);
+    const target = weekdayInWindow();
+    const entryRes = await app.inject({
+      method: "POST",
+      url: "/api/v1/entries",
+      headers: bearer(await signToken({ oid: studentExternalId })),
+      payload: { entryDate: target, body: "Work for the review test." },
+    });
+    expect(entryRes.statusCode).toBe(200);
+    return { studentId: s.id, entryId: entryRes.json<EntryLike>().id };
+  }
+
+  it("accepts a valid score/feedback/flag and returns them on the mentor-facing entry", async () => {
+    const { studentId, entryId } = await submittedEntry("er-1-student");
+    await mentor("er-1-mentor");
+
+    const before = await prisma.entry.findUniqueOrThrow({ where: { id: entryId } });
+    expect(before.score).toBeNull();
+    expect(before.mentorFeedback).toBeNull();
+    expect(before.countsTowardEvaluation).toBe(false);
+    expect(await prisma.entry.count({ where: { studentId, countsTowardEvaluation: true } })).toBe(0);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: bearer(await signToken({ oid: "er-1-mentor" })),
+      payload: { score: 85, feedback: "Good detail, keep it up.", countsTowardEvaluation: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<ReviewedEntryLike>();
+    expect(body.id).toBe(entryId);
+    expect(body.score).toBe(85);
+    expect(body.mentorFeedback).toBe("Good detail, keep it up.");
+    expect(body.countsTowardEvaluation).toBe(true);
+  });
+
+  it("fully replaces score/feedback/flag on a second review write, rather than merging", async () => {
+    const { entryId } = await submittedEntry("er-2-student");
+    await mentor("er-2-mentor");
+    const mentorHeader = bearer(await signToken({ oid: "er-2-mentor" }));
+
+    const first = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: mentorHeader,
+      payload: { score: 60, feedback: "First pass.", countsTowardEvaluation: false },
+    });
+    expect(first.statusCode).toBe(200);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: mentorHeader,
+      payload: { score: 95, feedback: "Revised after a closer look.", countsTowardEvaluation: true },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<ReviewedEntryLike>();
+    expect(body.score).toBe(95);
+    expect(body.mentorFeedback).toBe("Revised after a closer look.");
+    expect(body.countsTowardEvaluation).toBe(true);
+  });
+
+  it("rejects a score outside 0-100 with 400 validation-failed", async () => {
+    const { entryId } = await submittedEntry("er-3-student");
+    await mentor("er-3-mentor");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: bearer(await signToken({ oid: "er-3-mentor" })),
+      payload: { score: 101, feedback: "Too high.", countsTowardEvaluation: true },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    const body = res.json<ProblemLike>();
+    expect(body.type).toBe("https://irp.bistec.example/problems/validation-failed");
+  });
+
+  it("rejects unknown body properties with 400", async () => {
+    const { entryId } = await submittedEntry("er-4-student");
+    await mentor("er-4-mentor");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: bearer(await signToken({ oid: "er-4-mentor" })),
+      payload: { score: 50, feedback: "Has an extra field.", countsTowardEvaluation: false, extra: 1 },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    const body = res.json<ProblemLike>();
+    expect(body.type).toBe("https://irp.bistec.example/problems/validation-failed");
+  });
+
+  it("rejects a review write on an Evaluated day with 409 day-locked", async () => {
+    const { studentId, entryId } = await submittedEntry("er-5-student");
+    await mentor("er-5-mentor");
+
+    await prisma.dailyReport.updateMany({
+      where: { studentId },
+      data: { status: "EVALUATED", evaluatedAt: new Date() },
+    });
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: bearer(await signToken({ oid: "er-5-mentor" })),
+      payload: { score: 90, feedback: "Too late, day is locked.", countsTowardEvaluation: true },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    const body = res.json<ProblemLike>();
+    expect(body.type).toBe("https://irp.bistec.example/problems/day-locked");
+  });
+
+  it("rejects an unknown entry id with 404 entry-not-found", async () => {
+    await mentor("er-6-mentor");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${UNKNOWN_UUID}/review`,
+      headers: bearer(await signToken({ oid: "er-6-mentor" })),
+      payload: { score: 50, feedback: "Does not exist.", countsTowardEvaluation: false },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    const body = res.json<ProblemLike>();
+    expect(body.type).toBe("https://irp.bistec.example/problems/entry-not-found");
+  });
+
+  it("rejects a student token with 403 admin-only", async () => {
+    const { entryId } = await submittedEntry("er-7-student");
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: bearer(await signToken({ oid: "er-7-student" })),
+      payload: { score: 50, feedback: "Students cannot review.", countsTowardEvaluation: false },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    const body = res.json<ProblemLike>();
+    expect(body.type).toBe("https://irp.bistec.example/problems/admin-only");
+  });
+
+  it("rejects an unauthenticated request with 401", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${UNKNOWN_UUID}/review`,
+      payload: { score: 50, feedback: "No token at all.", countsTowardEvaluation: false },
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(res.headers["content-type"]).toContain("application/problem+json");
+    const body = res.json<ProblemLike>();
+    expect(body.type).toBe("https://irp.bistec.example/problems/unauthorized");
+  });
+
+  it("integration: submit -> InReview -> review -> Evaluated -> a further review 409s", async () => {
+    const { studentId, entryId } = await submittedEntry("er-8-student");
+    await mentor("er-8-mentor");
+    const mentorHeader = bearer(await signToken({ oid: "er-8-mentor" }));
+    const report = await prisma.dailyReport.findFirstOrThrow({ where: { studentId } });
+
+    const toInReview = await app.inject({
+      method: "POST",
+      url: `/api/v1/daily-reports/${report.id}/transition`,
+      headers: mentorHeader,
+      payload: { to: "InReview" },
+    });
+    expect(toInReview.statusCode).toBe(200);
+
+    const review = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: mentorHeader,
+      payload: { score: 88, feedback: "Solid submission.", countsTowardEvaluation: true },
+    });
+    expect(review.statusCode).toBe(200);
+
+    const toEvaluated = await app.inject({
+      method: "POST",
+      url: `/api/v1/daily-reports/${report.id}/transition`,
+      headers: mentorHeader,
+      payload: { to: "Evaluated" },
+    });
+    expect(toEvaluated.statusCode).toBe(200);
+
+    const secondReview = await app.inject({
+      method: "PUT",
+      url: `/api/v1/entries/${entryId}/review`,
+      headers: mentorHeader,
+      payload: { score: 10, feedback: "Should never apply.", countsTowardEvaluation: false },
+    });
+    expect(secondReview.statusCode).toBe(409);
+    const body = secondReview.json<ProblemLike>();
+    expect(body.type).toBe("https://irp.bistec.example/problems/day-locked");
   });
 });

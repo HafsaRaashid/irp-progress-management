@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { transitionDailyReport, upsertDayRecord } from "@irp/client";
+import {
+  transitionDailyReport,
+  upsertDayRecord,
+  reviewEntry as reviewEntrySdk,
+} from "@irp/client";
 import { apiClient } from "@/lib/api-client";
 
 interface ProblemLike {
@@ -90,6 +94,42 @@ export async function saveDayRecord(
     },
   });
   if (error !== undefined) return { error: problemMessage(error, "The record was not saved.") };
+  revalidatePath(`/review/${studentId}`);
+  return { ok: true };
+}
+
+/**
+ * Driven by EntryReviewForm (a client component) via plain useActionState --
+ * same shape as saveDayRecord. `reviewEntry` (the SDK call) is a full
+ * replace, like `upsertDayRecord` -- score, feedback, and the
+ * evaluation-inclusion flag are set together in one PUT, and a second write
+ * fully replaces the first rather than merging (spec §3). Returns `{ ok:
+ * true }` for the same reason saveDayRecord does: silently resolving to
+ * nothing here would look identical to a reopen-and-resave quietly reverting
+ * a field with no on-screen signal.
+ *
+ * ASSUMPTION: O-18 (Plan 9) -- this whole review surface rests on mentor
+ * sign-off that hasn't happened yet.
+ */
+export async function reviewEntry(
+  _prev: { ok: true } | { error: string } | null,
+  formData: FormData,
+): Promise<{ ok: true } | { error: string }> {
+  const client = await apiClient();
+  const studentId = formString(formData.get("studentId"));
+  const entryId = formString(formData.get("entryId"));
+  const score = Number(formString(formData.get("score")));
+  const feedback = formString(formData.get("feedback")).trim();
+  const { error } = await reviewEntrySdk({
+    client,
+    path: { id: entryId },
+    body: {
+      score,
+      feedback,
+      countsTowardEvaluation: formData.get("countsTowardEvaluation") === "on",
+    },
+  });
+  if (error !== undefined) return { error: problemMessage(error, "The review was not saved.") };
   revalidatePath(`/review/${studentId}`);
   return { ok: true };
 }
