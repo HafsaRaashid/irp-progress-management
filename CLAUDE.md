@@ -420,7 +420,7 @@ Read this before writing schema or naming anything.
 | **Cycle** | A monthly evaluation window, 10th → 9th, anchored to the batch's admission date, in Asia/Colombo. The unit of scoring. |
 | **Entry** | One text submission by a student. Multiple entries per day are allowed. |
 | **Daily report** | All of a student's entries for one date, rolled up. The reviewable unit. |
-| **States** | `Submitted → In Review → Evaluated`. There is **no Rejected state** — do not add one. |
+| **States** | `In Review → Evaluated`. A report is **born In Review** the instant a student submits — there is no earlier state and no "start review" step ([ADR-0028](docs/adr/0028-a-report-is-born-in-review.md), ASSUMPTION: O-19; FR-18 still says three, and its wording is the stakeholder's to change). There is **no Rejected state** — do not add one. |
 | **Required day** | A weekday. Carries a submission obligation and counts in compliance denominators. |
 | **Optional day** | A Saturday or Sunday. May hold entries, carries no obligation, never counts in a denominator. |
 | **Late** | An entry for a required day, submitted after that day ended but inside the grace window. Flagged, still accepted. Optional days are never late. |

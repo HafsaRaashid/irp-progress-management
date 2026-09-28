@@ -27,14 +27,14 @@ const STATUS_RENDER = {
 const NOT_AN_OUTCOME = new Set<PillStatus>(["none", "future"]);
 
 export type PillStatus = keyof typeof STATUS_RENDER;
-export type PillReportStatus = "Submitted" | "InReview" | "Evaluated" | null;
+export type PillReportStatus = "InReview" | "Evaluated" | null;
 
 /**
  * §3.2 specifies Evaluated as "`--ink` + lock glyph" and it was rendering the
  * ink without the glyph. Drawn rather than typed: U+1F512 is an emoji and
  * paints in its own colours, which a restrained four-colour status palette
  * cannot absorb. This inherits `currentColor`, so it stays --ink in both
- * themes. `aria-hidden` because the word "Evaluated" beside it already says
+ * themes. `aria-hidden` because the word "Saved" beside it already says
  * so — §12 wants glyph AND text, never a glyph carrying meaning alone.
  */
 function LockGlyph() {
@@ -93,7 +93,7 @@ export function StatusPill({
       )}
       {reportStatus === "Evaluated" && (
         <span className="inline-flex items-center gap-1" style={{ color: "var(--ink)" }}>
-          &middot; Evaluated <LockGlyph />
+          &middot; Saved <LockGlyph />
         </span>
       )}
     </span>

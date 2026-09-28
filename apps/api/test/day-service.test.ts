@@ -96,14 +96,14 @@ describe.skipIf(!dbUrl)("createDayService", () => {
     const onTime = byDate.get(MON_ON_TIME)!;
     expect(onTime.status).toBe("onTime");
     expect(onTime.reportId).not.toBeNull();
-    expect(onTime.reportStatus).toBe("SUBMITTED");
+    expect(onTime.reportStatus).toBe("IN_REVIEW");
     expect(onTime.absenceReason).toBeNull();
     expect(onTime.entries).toHaveLength(1);
 
     const late = byDate.get(TUE_LATE)!;
     expect(late.status).toBe("late");
     expect(late.reportId).not.toBeNull();
-    expect(late.reportStatus).toBe("SUBMITTED");
+    expect(late.reportStatus).toBe("IN_REVIEW");
     expect(late.entries).toHaveLength(1);
     expect(late.entries[0]!.isLate).toBe(true);
 
@@ -123,7 +123,7 @@ describe.skipIf(!dbUrl)("createDayService", () => {
     const extra = byDate.get(SAT_EXTRA)!;
     expect(extra.status).toBe("extra");
     expect(extra.reportId).not.toBeNull();
-    expect(extra.reportStatus).toBe("SUBMITTED");
+    expect(extra.reportStatus).toBe("IN_REVIEW");
     expect(extra.entries).toHaveLength(1);
     expect(extra.entries[0]!.isExtra).toBe(true);
 

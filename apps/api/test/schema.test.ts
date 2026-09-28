@@ -71,7 +71,7 @@ describe.skipIf(!dbUrl)("slice 2 schema", () => {
 
   it("round-trips the whole object graph", async () => {
     const report = await createFullGraph();
-    expect(report.status).toBe("SUBMITTED");
+    expect(report.status).toBe("IN_REVIEW");
     expect(await prisma.award.count()).toBe(1);
   });
 

@@ -61,7 +61,9 @@ export const TRANSITION_BODY = {
   required: ["to"],
   additionalProperties: false,
   properties: {
-    to: { type: "string", enum: ["InReview", "Evaluated"] },
+    // One forward target. A report is born InReview (entry-repo.ts), so
+    // "InReview" is no longer somewhere a caller can move a day TO.
+    to: { type: "string", enum: ["Evaluated"] },
   },
 } as const;
 
@@ -134,16 +136,5 @@ export const STUDENT_DATE_PARAM = {
   properties: {
     id: { type: "string", format: "uuid" },
     date: { type: "string", format: "date" },
-  },
-} as const;
-
-export const ENTRY_REVIEW_BODY = {
-  type: "object",
-  required: ["score", "feedback", "countsTowardEvaluation"],
-  additionalProperties: false,
-  properties: {
-    score: { type: "integer", minimum: 0, maximum: 100 },
-    feedback: { type: "string", maxLength: 500 },
-    countsTowardEvaluation: { type: "boolean" },
   },
 } as const;

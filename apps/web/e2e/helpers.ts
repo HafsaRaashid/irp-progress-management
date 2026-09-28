@@ -71,7 +71,11 @@ export function formatCivilDateLabel(isoDate: string): string {
  */
 export function dayPanelByLabel(page: Page, dateLabel: string): Locator {
   return page.locator(
-    `xpath=//div[contains(@class,"rounded-[var(--radius-panel)]") and .//div[contains(@class,"uppercase") and normalize-space(text())="${dateLabel}"]]`,
+    // Either title shape: the Review page renders each day title as a real
+    // <h2> (so 15+ panels can be skimmed by heading), while the student's
+    // own pages still use the SectionLabel <div>. This helper serves both
+    // suites, so matching only one silently zero-matched the other.
+    `xpath=//div[contains(@class,"rounded-[var(--radius-panel)]") and .//*[self::h2 or contains(@class,"uppercase")][normalize-space(text())="${dateLabel}"]]`,
   );
 }
 
@@ -93,7 +97,7 @@ export function dayPanelByHiddenDate(page: Page, isoDate: string): Locator {
 export async function panelDateLabel(panel: Locator): Promise<string> {
   const text = await panel
     .locator(
-      'xpath=.//div[contains(@class,"mb-3") and contains(@class,"justify-between")]//div[contains(@class,"uppercase")]',
+      'xpath=.//div[contains(@class,"mb-3") and contains(@class,"justify-between")]//*[self::h2 or contains(@class,"uppercase")]',
     )
     .first()
     .textContent();

@@ -347,15 +347,16 @@ describe.skipIf(!dbUrl)("createDashboardService — batchSummary", () => {
       studentId: s.id, entryDate: civilDate("2026-07-14"), body: "Report two.",
       submittedAt: colomboInstant(civilDate("2026-07-14"), "17:00"),
     });
+    // Both reports are born IN_REVIEW; evaluating one moves it and leaves
+    // the other as the mentor's outstanding work.
     const first = await entryRepo.getReport(s.id, civilDate("2026-07-13"));
-    await entryRepo.transition(first!.id, "IN_REVIEW", s.id, NOW);
+    await entryRepo.transition(first!.id, "EVALUATED", s.id, NOW);
 
     const view = await dashboards.batchSummary(batch.id, undefined, NOW);
     const row = view.students.find((r) => r.student.id === s.id)!;
 
     expect(row.reviewProgress.inReview).toBe(1);
-    expect(row.reviewProgress.submitted).toBe(1);
-    expect(row.reviewProgress.evaluated).toBe(0);
+    expect(row.reviewProgress.evaluated).toBe(1);
   });
 
   it("resolves an explicit cycle sequence to that cycle's bounds", async () => {

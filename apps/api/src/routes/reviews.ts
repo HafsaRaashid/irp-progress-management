@@ -7,7 +7,6 @@ import type { MentorRecordRepo, MentorDayRecordShape } from "../db/mentor-record
 import type { DayService } from "../services/day-service.js";
 import { StudentNotFoundError, WeekendDayRecordError, FutureDayRecordError } from "../domain/errors.js";
 import { requireAdmin } from "../plugins/roles.js";
-import { toApiEntryForMentor } from "./entries.js";
 import { REPORT_STATUS_TO_API, resolveRange, toApiDay, DAYS_QUERY } from "./me-days.js";
 import { TRANSITION_BODY, DAY_RECORD_BODY, UUID_PARAM, STUDENT_DATE_PARAM } from "./schemas.js";
 
@@ -15,9 +14,9 @@ type ApiDailyReport = components["schemas"]["DailyReport"];
 type ApiDayRecord = components["schemas"]["DayRecord"];
 
 // The API's `to` casing to the generated Prisma enum's — the inverse of
-// REPORT_STATUS_TO_API, and deliberately only the two forward targets a
-// caller may request (there is no "SUBMITTED" target; nothing moves back).
-const TO_DB_STATUS = { InReview: "IN_REVIEW", Evaluated: "EVALUATED" } as const;
+// REPORT_STATUS_TO_API. One entry now: a report is born IN_REVIEW, so
+// EVALUATED is the only place a caller can move it, and nothing moves back.
+const TO_DB_STATUS = { Evaluated: "EVALUATED" } as const;
 
 function toApiDailyReport(r: DailyReportRecord): ApiDailyReport {
   return {
@@ -106,7 +105,7 @@ export const reviewRoutes: FastifyPluginAsync<{
       const now = new Date();
       const { from, to } = resolveRange(req.query.from, req.query.to, now);
       const days = await opts.dayService.listDays(req.params.id, from, to, now);
-      return days.map((v) => toApiDay(v, toApiEntryForMentor));
+      return days.map(toApiDay);
     },
   );
 

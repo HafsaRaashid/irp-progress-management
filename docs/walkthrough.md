@@ -115,18 +115,12 @@ picker.
 
 `Review`, then pick a student. One student, one cycle, newest day first.
 
-- The forward-only control: `Submitted → In Review → Evaluated`. There is no reject button
+- **One control per day: Save record.** A day is already In Review when you open it — the submission is the thing under review, so there is nothing to "start" (ADR-0028) — and saving the attendance record also finishes the day, so there is nothing separate to "mark" either (ADR-0029). A day the student can still submit to (today, and the previous weekday) is saved *without* being finished, because finishing locks it irreversibly. Finished days read **Saved**, not "Evaluated" — that word means the monthly index, which nothing produces yet. There is no reject button
   anywhere, by design (FR-18).
 - Mark a day `Evaluated` and it **locks** — the student can no longer submit or change an absence
   for it (FR-20). The lock is visible, not silent.
 - The mentor's own attendance/tasks record sits alongside the student's entries and is independent
   of them: a mentor can record attendance for a day the student never submitted (FR-19).
-- **Each entry now carries its own review control** (Plan 9, ASSUMPTION: O-18): a 0-100 score,
-  free-text feedback, and a checkbox for whether the submission counts toward the monthly
-  evaluation. Saving replaces all three together — there is no separate approval step, and a
-  second save on the same entry fully replaces the first rather than merging. The control
-  disappears once the day is `Evaluated` and locked (FR-20); the entry keeps whatever review it
-  last held.
 
 ### 4. Cycles
 
@@ -140,10 +134,8 @@ picker.
 - **Kavindu shows 4 absences and also reads 100%.** This is the open question O-7 made visible —
   see "What surprised us" #2. It is the single most useful thing on this screen to ask the mentor
   about.
-- The **Evaluation** column reads *Awaiting evaluation* for everyone. That is a designed state, not
-  a loading failure: Plan 9 replaced the AI-scored-cycle pipeline this column was built for with
-  per-submission mentor review (see Review, above) — individual entries can carry a score now, but
-  nothing yet rolls those per-entry scores up into a cycle-level figure this column would show.
+- The **Evaluation** column reads *Awaiting evaluation* for everyone, and will until Plan 9. That
+  is a designed state, not a loading failure.
 
 ### 5. Students
 
@@ -241,8 +233,7 @@ told otherwise.
 
 | Not here | Why |
 |---|---|
-| Any AI summary or an AI-produced score | **O-5 is unresolved.** Student submissions are personal data, and no provider has been approved to process them. No AI call is wired at all, and Plan 9 stopped waiting on it — a mentor now scores each submission directly (per-entry, on Review) instead of an AI-scored cycle pipeline (ADR-0026). |
-| A cycle-level evaluation figure | Per-entry mentor scores exist now, but nothing yet aggregates them into the monthly figure the Cycles page's Evaluation column would show. |
+| Any AI summary or score | **O-5 is unresolved.** Student submissions are personal data, and no provider has been approved to process them. No AI call is wired at all — the evaluation schema exists, the calls do not. Plan 9. |
 | Notifications on submission or state change | Plan 8. No stub, no fake outbox — nothing in this demo pretends to send anything. |
 | Monthly winner and the downloadable PDF | Plan 10. |
 | Load-test numbers | Plan 11. Nothing in this slice claims an NFR figure. |

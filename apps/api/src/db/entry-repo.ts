@@ -5,7 +5,6 @@ import {
   LockedDayError,
   ReportNotFoundError,
   InvalidTransitionError,
-  EntryNotFoundError,
 } from "../domain/errors.js";
 import type { DailyReportStatus, PrismaClient } from "../generated/prisma/client.js";
 import { fromDbDate, toDbDate } from "./civil-date-map.js";
@@ -17,8 +16,7 @@ import { lockStudentDay } from "./day-lock.js";
 // routes/me-days.ts also imports -- reaching from here into routes/ would
 // invert that layering even though no runtime cycle exists yet. A three-line
 // map is cheaper than depending on that staying true.
-const TRANSITION_STATUS_TO_API: Record<DailyReportStatus, "Submitted" | "InReview" | "Evaluated"> = {
-  SUBMITTED: "Submitted",
+const TRANSITION_STATUS_TO_API: Record<DailyReportStatus, "InReview" | "Evaluated"> = {
   IN_REVIEW: "InReview",
   EVALUATED: "Evaluated",
 };
@@ -31,9 +29,6 @@ export interface EntryRecord {
   submittedAt: Date;
   isLate: boolean;
   isExtra: boolean;
-  score: number | null;
-  mentorFeedback: string | null;
-  countsTowardEvaluation: boolean;
 }
 
 export interface DailyReportRecord {
@@ -57,38 +52,23 @@ export interface EntryRepo {
   listEntriesForStudents(studentIds: string[], from: CivilDate, to: CivilDate): Promise<EntryRecord[]>;
   /** Batched sibling of listReports (ADR-0018). */
   listReportsForStudents(studentIds: string[], from: CivilDate, to: CivilDate): Promise<DailyReportRecord[]>;
+  /**
+   * The one forward transition left: IN_REVIEW -> EVALUATED (FR-18, FR-20).
+   * `to` is a single-member union rather than a boolean-ish flag so the call
+   * site still reads as a destination, and so adding a state later is a type
+   * error at every caller rather than a silent behaviour change.
+   */
   transition(
     reportId: string,
-    to: "IN_REVIEW" | "EVALUATED",
+    to: "EVALUATED",
     mentorId: string,
     now: Date,
   ): Promise<DailyReportRecord>;
-  /**
-   * A mentor's full-replace review of one entry (FR-10/FR-11/FR-19,
-   * ASSUMPTION: O-18): score, feedback, and the evaluation-inclusion flag are
-   * set together in one write. Same lock shape as `addEntry` — resolves the
-   * entry's parent `DailyReport` by (studentId, entryDate) and throws
-   * `LockedDayError` if it is `EVALUATED` (FR-20).
-   *
-   * Scoring an entry is itself review activity: a still-`SUBMITTED` day is
-   * advanced to `IN_REVIEW` in the same transaction, so a mentor never needs
-   * a separate manual "start review" step first. This method never actually
-   * required `IN_REVIEW` to already hold before accepting a review write —
-   * the auto-advance just makes the day's UI-visible status agree with what
-   * was already true underneath it.
-   */
-  reviewEntry(
-    id: string,
-    input: { score: number; mentorFeedback: string; countsTowardEvaluation: boolean },
-    mentorId: string,
-    now: Date,
-  ): Promise<EntryRecord>;
 }
 
 interface DbEntry {
   id: string; studentId: string; entryDate: Date; body: string;
   submittedAt: Date; isLate: boolean; isExtra: boolean;
-  score: number | null; mentorFeedback: string | null; countsTowardEvaluation: boolean;
 }
 
 function mapEntry(e: DbEntry): EntryRecord {
@@ -100,9 +80,6 @@ function mapEntry(e: DbEntry): EntryRecord {
     submittedAt: e.submittedAt,
     isLate: e.isLate,
     isExtra: e.isExtra,
-    score: e.score,
-    mentorFeedback: e.mentorFeedback,
-    countsTowardEvaluation: e.countsTowardEvaluation,
   };
 }
 
@@ -133,10 +110,21 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
         // Upsert, not find-then-create: two concurrent first entries for the
         // same day would both see no report and the loser would throw P2002.
         // Prisma compiles this shape to a native INSERT ... ON CONFLICT.
+        // Born IN_REVIEW, with inReviewAt stamped at the same instant: the
+        // submission IS the thing under review, so there is no earlier state
+        // for a mentor to move it out of (interview Q14, ASSUMPTION: O-19).
+        // `update: {}` still -- a second entry on the same day must not reset
+        // inReviewAt, and must not drag an already-EVALUATED day backwards
+        // (it cannot reach here anyway; the lock check above throws first).
         await tx.dailyReport.upsert({
           where: { studentId_reportDate: { studentId: input.studentId, reportDate: dbDate } },
           update: {},
-          create: { studentId: input.studentId, reportDate: dbDate },
+          create: {
+            studentId: input.studentId,
+            reportDate: dbDate,
+            status: "IN_REVIEW",
+            inReviewAt: input.submittedAt,
+          },
         });
         const entry = await tx.entry.create({
           data: {
@@ -202,33 +190,13 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
     // concurrency guard: two mentors racing the same step both attempt the
     // same conditional update, and exactly one sees count === 1.
     async transition(reportId, to, mentorId, now) {
-      let count: number;
-      if (to === "IN_REVIEW") {
-        ({ count } = await prisma.dailyReport.updateMany({
-          where: { id: reportId, status: "SUBMITTED" },
-          data: { status: to, reviewedById: mentorId, inReviewAt: now },
-        }));
-      } else {
-        // EVALUATED is reachable directly from SUBMITTED now, not only from
-        // IN_REVIEW: per-submission review can advance a day to InReview on
-        // its own (reviewEntry, below), so requiring a separate manual
-        // "Start review" step before evaluating is no longer necessary --
-        // nor is scoring an entry required at all before evaluating. Two
-        // attempts, not one updateMany over both statuses, because the data
-        // written differs: inReviewAt is only backfilled to `now` when
-        // jumping straight from SUBMITTED -- a day already IN_REVIEW keeps
-        // its real inReviewAt instant.
-        ({ count } = await prisma.dailyReport.updateMany({
-          where: { id: reportId, status: "IN_REVIEW" },
-          data: { status: to, reviewedById: mentorId, evaluatedAt: now },
-        }));
-        if (count === 0) {
-          ({ count } = await prisma.dailyReport.updateMany({
-            where: { id: reportId, status: "SUBMITTED" },
-            data: { status: to, reviewedById: mentorId, inReviewAt: now, evaluatedAt: now },
-          }));
-        }
-      }
+      // One transition exists now: IN_REVIEW -> EVALUATED. `to` is typed to
+      // that single value, so there is no branch left to take -- the second
+      // step went away with SUBMITTED (ASSUMPTION: O-19).
+      const { count } = await prisma.dailyReport.updateMany({
+        where: { id: reportId, status: "IN_REVIEW" },
+        data: { status: to, reviewedById: mentorId, evaluatedAt: now },
+      });
       if (count === 0) {
         const current = await prisma.dailyReport.findUnique({ where: { id: reportId } });
         if (!current) throw new ReportNotFoundError(reportId);
@@ -242,39 +210,6 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
       }
       const r = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
       return { id: r.id, studentId: r.studentId, reportDate: fromDbDate(r.reportDate), status: r.status };
-    },
-
-    async reviewEntry(id, input, mentorId, now) {
-      return prisma.$transaction(async (tx) => {
-        const entry = await tx.entry.findUnique({ where: { id } });
-        if (!entry) throw new EntryNotFoundError(id);
-
-        const entryDate = fromDbDate(entry.entryDate);
-        await lockStudentDay(tx, entry.studentId, entryDate);
-
-        const report = await tx.dailyReport.findUnique({
-          where: { studentId_reportDate: { studentId: entry.studentId, reportDate: entry.entryDate } },
-        });
-        if (report?.status === "EVALUATED") {
-          throw new LockedDayError(entryDate);
-        }
-        if (report?.status === "SUBMITTED") {
-          await tx.dailyReport.update({
-            where: { id: report.id },
-            data: { status: "IN_REVIEW", reviewedById: mentorId, inReviewAt: now },
-          });
-        }
-
-        const updated = await tx.entry.update({
-          where: { id },
-          data: {
-            score: input.score,
-            mentorFeedback: input.mentorFeedback,
-            countsTowardEvaluation: input.countsTowardEvaluation,
-          },
-        });
-        return mapEntry(updated);
-      });
     },
   };
 }

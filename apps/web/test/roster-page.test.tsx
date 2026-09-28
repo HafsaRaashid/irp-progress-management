@@ -114,7 +114,7 @@ describe("RosterPage", () => {
           day: {
             date: "2026-07-31",
             status: "onTime",
-            reportStatus: "Submitted",
+            reportStatus: "InReview",
             reportId: "r1",
             absenceReason: null,
             entries: [

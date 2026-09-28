@@ -182,7 +182,7 @@ test.describe("student flows (dev-student-1, compliant, Batch 1)", () => {
         "month page does not exist yet, so the Today page never lists a day this old at all. " +
         "Its absence from both the composer's <select> and the Recent days list IS the observable " +
         "lock from this page; there is nowhere on the student's own UI closer to FR-20's " +
-        '"· Evaluated" pill (that text only renders on the mentor review page).',
+        '"· Saved" pill (that text only renders on the mentor review page).',
     });
     const values = await page
       .getByLabel("Entry date")

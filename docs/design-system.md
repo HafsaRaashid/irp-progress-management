@@ -349,7 +349,7 @@ once, in `apps/web/lib/ribbon.ts`; a page that re-derives a mark is a bug.
 │  Roster                                     Search  [        ]  Filter │
 │  ──────────────────────────────────────────────────────────────────────│
 │  Student           Today          Streak   Compliance   Index          │
-│  A. Perera         ● Submitted        12       96%       84.2          │
+│  A. Perera         ● On time          12       96%       84.2          │
 │  N. Silva          ◐ In review         9       91%       78.5          │
 │  R. Fernando       ✕ Missed            0       74%       71.0          │
 │  S. Jayasuriya     ▲ Late              6       88%       80.1          │
@@ -387,7 +387,7 @@ below it. No score, no rank, no other students, anywhere on this surface.
 
 ### 8.3 Review — FR-18 to FR-20
 
-Daily report as the reviewable unit, entries rolled up. `Submitted → In Review → Evaluated`,
+Daily report as the reviewable unit, entries rolled up. `In Review → Evaluated` (born In Review, ADR-0028),
 one direction. Evaluated is terminal and visibly locked. No reject control exists anywhere in
 the UI.
 

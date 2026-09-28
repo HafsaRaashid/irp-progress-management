@@ -238,25 +238,17 @@ export async function runSeed(prisma: PrismaClient, now: Date): Promise<void> {
   const mentorRecords = createMentorRecordRepo(prisma);
   const mentor1 = mentorRows[0]!;
   const evaluatedBefore = toDbDate(addDays(today, -14));
-  const inReviewBefore = toDbDate(addDays(today, -7));
 
-  // Scoped to studentId: { in: studentIds } -- without it, this rewrites and
-  // locks any non-seed student's reports too, and the next seed run's wipe
-  // (which only deletes seed-owned rows) hits a mentor-record FK still
-  // pointing at a report this update just moved to EVALUATED.
-  await prisma.dailyReport.updateMany({
+  // Records BEFORE the EVALUATED sweep, which is the order a mentor works
+  // in: record the day, and finishing it is what locks it (ADR-0029).
+  // Writing them afterwards -- as this did until 2026-09-28 -- now throws
+  // LockedDayError, because mentor-record-repo enforces FR-20 for the
+  // mentor's own record too. That the seed tripped over it is the point:
+  // the seed was reproducing a sequence the application cannot perform.
+  const toEvaluate = await prisma.dailyReport.findMany({
     where: { reportDate: { lt: evaluatedBefore }, studentId: { in: studentIds } },
-    data: { status: "EVALUATED", reviewedById: mentor1.id, evaluatedAt: now, inReviewAt: now },
   });
-  await prisma.dailyReport.updateMany({
-    where: { reportDate: { lt: inReviewBefore, gte: evaluatedBefore }, studentId: { in: studentIds } },
-    data: { status: "IN_REVIEW", reviewedById: mentor1.id, inReviewAt: now },
-  });
-
-  const evaluated = await prisma.dailyReport.findMany({
-    where: { status: "EVALUATED", studentId: { in: studentIds } },
-  });
-  for (const report of evaluated) {
+  for (const report of toEvaluate) {
     const reportDate = fromDbDate(report.reportDate);
     if (!isWeekday(reportDate)) continue;
     await mentorRecords.upsert({
@@ -268,32 +260,19 @@ export async function runSeed(prisma: PrismaClient, now: Date): Promise<void> {
     });
   }
 
-  // ── one already-seeded entry gets a review write ─────────────────────────
-  // ASSUMPTION: O-18 — mentor-scored submissions (score/mentorFeedback/
-  // countsTowardEvaluation) replace the AI-scored-cycle pipeline (FR-22-24),
-  // pending mentor sign-off (docs/interview-and-prd.md §5). Plan 9's own
-  // risk table (and the student-feedback-visibility spec that follows it)
-  // requires at least one entry with feedback in seed data so that later
-  // spec's E2E case has something to observe. `entryRepo.reviewEntry()`
-  // doesn't exist until Plan 9 Task 2, so this writes directly via
-  // `prisma.entry.update` against a real, already-created entry's id rather
-  // than fabricating one.
-  const reviewSubject = studentRows.get("dev-student-1")!;
-  const entryToReview = await prisma.entry.findFirst({
-    where: { studentId: reviewSubject.id },
-    orderBy: [{ entryDate: "desc" }, { submittedAt: "desc" }],
+  // Scoped to studentId: { in: studentIds } -- without it, this rewrites and
+  // locks any non-seed student's reports too, and the next seed run's wipe
+  // (which only deletes seed-owned rows) hits a mentor-record FK still
+  // pointing at a report this update just moved to EVALUATED.
+  await prisma.dailyReport.updateMany({
+    where: { reportDate: { lt: evaluatedBefore }, studentId: { in: studentIds } },
+    data: { status: "EVALUATED", reviewedById: mentor1.id, evaluatedAt: now, inReviewAt: now },
   });
-  if (entryToReview) {
-    await prisma.entry.update({
-      where: { id: entryToReview.id },
-      data: {
-        score: 88,
-        mentorFeedback:
-          "Solid write-up — the PDF edge-case handling shows you're thinking about robustness, not just the happy path.",
-        countsTowardEvaluation: true,
-      },
-    });
-  }
+  // No second updateMany for the IN_REVIEW band: every report is born
+  // IN_REVIEW with inReviewAt stamped at submission, so anything this
+  // EVALUATED sweep did not catch is already in the right state. Forcing it
+  // would also set reviewedById on a report no mentor has acted on yet,
+  // which would read as "someone reviewed this" when nobody has.
 
   // ── archive + cycles ─────────────────────────────────────────────────────
   const archived = SEED_STUDENTS.find((s) => s.kind === "archived")!;

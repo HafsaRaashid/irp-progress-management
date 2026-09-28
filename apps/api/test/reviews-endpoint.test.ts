@@ -41,14 +41,7 @@ interface DaySummaryLike {
   reportStatus: string | null;
   reportId: string | null;
   absenceReason: string | null;
-  entries: {
-    id: string;
-    entryDate: string;
-    body: string;
-    score: number | null;
-    mentorFeedback: string | null;
-    countsTowardEvaluation: boolean;
-  }[];
+  entries: { id: string; entryDate: string; body: string }[];
 }
 
 // Same construction `absences-endpoint.test.ts` uses: a weekday still inside
@@ -117,84 +110,41 @@ describe.skipIf(!dbUrl)(
     }
 
     describe("transition", () => {
-      it("moves Submitted to InReview (200), sets reviewedById and inReviewAt", async () => {
+      it("a submitted day is already InReview -- no transition needed to get there", async () => {
         const { reportId } = await submittedReportId("rev-t1-student");
-        const m = await mentor("rev-t1-mentor");
+
+        // No transition call at all. The report exists because a student
+        // submitted, and that submission is itself the thing under review
+        // (ASSUMPTION: O-19), so inReviewAt is already stamped.
+        const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
+        expect(row.status).toBe("IN_REVIEW");
+        expect(row.inReviewAt).not.toBeNull();
+        expect(row.evaluatedAt).toBeNull();
+      });
+
+      it("moves InReview to Evaluated (200) in one step, sets reviewedById and evaluatedAt", async () => {
+        const { reportId } = await submittedReportId("rev-t2-student");
+        const m = await mentor("rev-t2-mentor");
 
         const res = await app.inject({
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearer(await signToken({ oid: "rev-t1-mentor" })),
-          payload: { to: "InReview" },
+          headers: bearer(await signToken({ oid: "rev-t2-mentor" })),
+          payload: { to: "Evaluated" },
         });
 
         expect(res.statusCode).toBe(200);
         const body = res.json<DailyReportLike>();
         expect(body.id).toBe(reportId);
-        expect(body.status).toBe("InReview");
-
-        const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
-        expect(row.status).toBe("IN_REVIEW");
-        expect(row.reviewedById).toBe(m.id);
-        expect(row.inReviewAt).not.toBeNull();
-        expect(row.evaluatedAt).toBeNull();
-      });
-
-      it("moves InReview to Evaluated (200), sets evaluatedAt", async () => {
-        const { reportId } = await submittedReportId("rev-t2-student");
-        await mentor("rev-t2-mentor");
-        const bearerHeader = bearer(await signToken({ oid: "rev-t2-mentor" }));
-
-        const first = await app.inject({
-          method: "POST",
-          url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
-          payload: { to: "InReview" },
-        });
-        expect(first.statusCode).toBe(200);
-
-        const res = await app.inject({
-          method: "POST",
-          url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
-          payload: { to: "Evaluated" },
-        });
-
-        expect(res.statusCode).toBe(200);
-        const body = res.json<DailyReportLike>();
-        expect(body.status).toBe("Evaluated");
-
-        const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
-        expect(row.status).toBe("EVALUATED");
-        expect(row.evaluatedAt).not.toBeNull();
-      });
-
-      it("moves Submitted directly to Evaluated (200) -- a manual InReview step is no longer required", async () => {
-        const { reportId } = await submittedReportId("rev-t7-student");
-        const m = await mentor("rev-t7-mentor");
-
-        const res = await app.inject({
-          method: "POST",
-          url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearer(await signToken({ oid: "rev-t7-mentor" })),
-          payload: { to: "Evaluated" },
-        });
-
-        expect(res.statusCode).toBe(200);
-        const body = res.json<DailyReportLike>();
         expect(body.status).toBe("Evaluated");
 
         const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
         expect(row.status).toBe("EVALUATED");
         expect(row.reviewedById).toBe(m.id);
-        // Backfilled to the same instant as evaluatedAt, since review and
-        // evaluation happened in the same step here -- not left null just
-        // because no separate InReview step ever ran.
-        expect(row.inReviewAt).not.toBeNull();
         expect(row.evaluatedAt).not.toBeNull();
       });
 
-      it("rejects a repeat InReview transition with 409 invalid-transition", async () => {
+      it("rejects a repeat Evaluated transition with 409 invalid-transition", async () => {
         const { reportId } = await submittedReportId("rev-t3-student");
         await mentor("rev-t3-mentor");
         const bearerHeader = bearer(await signToken({ oid: "rev-t3-mentor" }));
@@ -203,7 +153,7 @@ describe.skipIf(!dbUrl)(
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
           headers: bearerHeader,
-          payload: { to: "InReview" },
+          payload: { to: "Evaluated" },
         });
         expect(first.statusCode).toBe(200);
 
@@ -211,7 +161,7 @@ describe.skipIf(!dbUrl)(
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
           headers: bearerHeader,
-          payload: { to: "InReview" },
+          payload: { to: "Evaluated" },
         });
 
         expect(res.statusCode).toBe(409);
@@ -220,35 +170,24 @@ describe.skipIf(!dbUrl)(
         expect(body.type).toBe("https://irp.bistec.example/problems/invalid-transition");
       });
 
-      it("rejects Evaluated to InReview with 409 invalid-transition — forward-only, no way back", async () => {
+      it("rejects `to: InReview` at the contract with 400 -- it is no longer a target, not merely an illegal one", async () => {
         const { reportId } = await submittedReportId("rev-t4-student");
         await mentor("rev-t4-mentor");
-        const bearerHeader = bearer(await signToken({ oid: "rev-t4-mentor" }));
 
-        await app.inject({
-          method: "POST",
-          url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
-          payload: { to: "InReview" },
-        });
-        const evaluated = await app.inject({
-          method: "POST",
-          url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
-          payload: { to: "Evaluated" },
-        });
-        expect(evaluated.statusCode).toBe(200);
-
+        // Deliberately 400, not 409: with one state left to move to,
+        // "InReview" is not a value the request body admits at all, so the
+        // schema rejects it before any handler decides whether it would
+        // have been a legal move. Forward-only is now enforced by the
+        // contract's shape rather than by a runtime status comparison.
         const res = await app.inject({
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
+          headers: bearer(await signToken({ oid: "rev-t4-mentor" })),
           payload: { to: "InReview" },
         });
 
-        expect(res.statusCode).toBe(409);
-        const body = res.json<ProblemLike>();
-        expect(body.type).toBe("https://irp.bistec.example/problems/invalid-transition");
+        expect(res.statusCode).toBe(400);
+        expect(res.headers["content-type"]).toContain("application/problem+json");
       });
 
       it("rejects an unknown report id with 404 report-not-found", async () => {
@@ -258,7 +197,7 @@ describe.skipIf(!dbUrl)(
           method: "POST",
           url: `/api/v1/daily-reports/${UNKNOWN_UUID}/transition`,
           headers: bearer(await signToken({ oid: "rev-t5-mentor" })),
-          payload: { to: "InReview" },
+          payload: { to: "Evaluated" },
         });
 
         expect(res.statusCode).toBe(404);
@@ -274,7 +213,7 @@ describe.skipIf(!dbUrl)(
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
           headers: bearer(await signToken({ oid: "rev-t6-student" })),
-          payload: { to: "InReview" },
+          payload: { to: "Evaluated" },
         });
 
         expect(res.statusCode).toBe(403);
@@ -333,6 +272,40 @@ describe.skipIf(!dbUrl)(
         expect(res.statusCode).toBe(200);
         const body = res.json<DayRecordLike>();
         expect(body.attended).toBe(false);
+      });
+
+      it("rejects a day-record write on a finished (Evaluated) day with 409 day-locked", async () => {
+        // FR-20 applies to the MENTOR's own record, not just the student's
+        // entries. Until 2026-09-28 this path had no lock check at all --
+        // the write succeeded and only the Review page declining to render
+        // the form stopped it, which is a convention, not a lock. Remove
+        // the guard in mentor-record-repo.upsert and this test goes red
+        // with a 200; that is the point of it.
+        const { studentId } = await submittedReportId("rev-d9-student");
+        await mentor("rev-d9-mentor");
+        const header = bearer(await signToken({ oid: "rev-d9-mentor" }));
+        const target = weekdayInWindow();
+
+        const report = await prisma.dailyReport.findFirstOrThrow({ where: { studentId } });
+        const finish = await app.inject({
+          method: "POST",
+          url: `/api/v1/daily-reports/${report.id}/transition`,
+          headers: header,
+          payload: { to: "Evaluated" },
+        });
+        expect(finish.statusCode).toBe(200);
+
+        const res = await app.inject({
+          method: "PUT",
+          url: `/api/v1/students/${studentId}/day-records/${target}`,
+          headers: header,
+          payload: { attended: true, tasksCompleted: true },
+        });
+
+        expect(res.statusCode).toBe(409);
+        expect(res.headers["content-type"]).toContain("application/problem+json");
+        const body = res.json<ProblemLike>();
+        expect(body.type).toBe("https://irp.bistec.example/problems/day-locked");
       });
 
       it("rejects a weekend date with 400 weekend-day-record", async () => {
@@ -528,7 +501,7 @@ describe.skipIf(!dbUrl)(
         expect(body).toHaveLength(1);
         const day = body[0]!;
         expect(day.date).toBe(target);
-        expect(day.reportStatus).toBe("Submitted");
+        expect(day.reportStatus).toBe("InReview");
         expect(day.reportId).not.toBeNull();
         expect(day.entries).toHaveLength(1);
         expect(day.entries[0]!.body).toBe("Wrote the student-days endpoint tests.");
@@ -614,52 +587,6 @@ describe.skipIf(!dbUrl)(
         expect(res.headers["content-type"]).toContain("application/problem+json");
         const body = res.json<ProblemLike>();
         expect(body.type).toBe("https://irp.bistec.example/problems/admin-only");
-      });
-
-      it("returns the three review fields on each entry, reflecting a mentor's review", async () => {
-        const s = await student("rev-s5-student");
-        await mentor("rev-s5-mentor");
-        const mentorHeader = bearer(await signToken({ oid: "rev-s5-mentor" }));
-        const target = weekdayInWindow();
-
-        const entryRes = await app.inject({
-          method: "POST",
-          url: "/api/v1/entries",
-          headers: bearer(await signToken({ oid: "rev-s5-student" })),
-          payload: { entryDate: target, body: "Entry awaiting review." },
-        });
-        expect(entryRes.statusCode).toBe(200);
-        const entryId = entryRes.json<{ id: string }>().id;
-
-        const before = await app.inject({
-          method: "GET",
-          url: `/api/v1/students/${s.id}/days?from=${target}&to=${target}`,
-          headers: mentorHeader,
-        });
-        expect(before.statusCode).toBe(200);
-        const beforeEntry = before.json<DaySummaryLike[]>()[0]!.entries[0]!;
-        expect(beforeEntry.score).toBeNull();
-        expect(beforeEntry.mentorFeedback).toBeNull();
-        expect(beforeEntry.countsTowardEvaluation).toBe(false);
-
-        const reviewRes = await app.inject({
-          method: "PUT",
-          url: `/api/v1/entries/${entryId}/review`,
-          headers: mentorHeader,
-          payload: { score: 92, feedback: "Excellent detail.", countsTowardEvaluation: true },
-        });
-        expect(reviewRes.statusCode).toBe(200);
-
-        const after = await app.inject({
-          method: "GET",
-          url: `/api/v1/students/${s.id}/days?from=${target}&to=${target}`,
-          headers: mentorHeader,
-        });
-        expect(after.statusCode).toBe(200);
-        const afterEntry = after.json<DaySummaryLike[]>()[0]!.entries[0]!;
-        expect(afterEntry.score).toBe(92);
-        expect(afterEntry.mentorFeedback).toBe("Excellent detail.");
-        expect(afterEntry.countsTowardEvaluation).toBe(true);
       });
     });
   },
