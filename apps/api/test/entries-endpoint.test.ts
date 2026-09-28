@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { isWeekday, previousWeekday, toProgrammeDate } from "@irp/core";
 import { buildTestServer } from "./helpers/build-test-server.js";
@@ -6,6 +6,7 @@ import { toDbDate } from "../src/db/civil-date-map.js";
 import { resetDb } from "./helpers/db.js";
 import { signToken } from "./helpers/keys.js";
 import { dbUrl } from "./helpers/require-db.js";
+import type { NotificationEvent } from "../src/services/notification-service.js";
 
 const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
 
@@ -221,5 +222,66 @@ describe.skipIf(!dbUrl)("POST /api/v1/entries", () => {
     expect(res.headers["content-type"]).toContain("application/problem+json");
     const body = res.json<ProblemLike>();
     expect(body.type).toBe("https://irp.bistec.example/problems/unauthorized");
+  });
+});
+
+// FR-21: notify() is fire-and-forget (design spec D5) — the write's own
+// success must never depend on it. A separate app instance carries a spy
+// notificationService so these two concerns don't leak into the suite above.
+describe.skipIf(!dbUrl)("POST /api/v1/entries — notifications (FR-21)", () => {
+  let app: FastifyInstance;
+  let prisma: Awaited<ReturnType<typeof buildTestServer>>["prisma"];
+  const notify = vi.fn<(event: NotificationEvent) => void>();
+
+  beforeAll(async () => {
+    ({ app, prisma } = await buildTestServer(dbUrl!, { notificationService: { notify } }));
+  });
+  beforeEach(async () => {
+    await resetDb(prisma);
+    notify.mockReset();
+  });
+  afterAll(async () => {
+    await app.close();
+    await prisma.$disconnect();
+  });
+
+  it("still returns 200 and commits the entry when notify() throws on every call", async () => {
+    notify.mockImplementation(() => {
+      throw new Error("notification dispatch exploded");
+    });
+    await prisma.user.create({
+      data: { externalId: "notif-1", email: "notif-1@dev.local", displayName: "notif-1", role: "STUDENT" },
+    });
+    const today = toProgrammeDate(new Date());
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/entries",
+      headers: bearer(await signToken({ oid: "notif-1" })),
+      payload: { entryDate: today, body: "Should still be saved." },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(await prisma.entry.count()).toBe(1);
+  });
+
+  it("calls notify() exactly once with the submitted entry's studentId and entryDate", async () => {
+    const s = await prisma.user.create({
+      data: { externalId: "notif-2", email: "notif-2@dev.local", displayName: "notif-2", role: "STUDENT" },
+    });
+    const today = toProgrammeDate(new Date());
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/entries",
+      headers: bearer(await signToken({ oid: "notif-2" })),
+      payload: { entryDate: today, body: "Notify me." },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "EntrySubmitted", studentId: s.id, entryDate: today }),
+    );
   });
 });

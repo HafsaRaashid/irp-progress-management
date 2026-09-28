@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { canSubmitFor, civilDate } from "@irp/core";
 import type { components } from "@irp/types";
 import type { AbsenceRepo, AbsenceRecordShape } from "../db/absence-repo.js";
+import type { NotificationService } from "../services/notification-service.js";
 import { AbsenceWindowClosedError } from "../domain/errors.js";
 import { requireStudent } from "./entries.js";
 import { ABSENCE_CREATE_BODY, DATE_PARAM } from "./schemas.js";
@@ -17,8 +18,11 @@ function assertWindowOpen(date: string, now: Date): void {
   if (!canSubmitFor(civilDate(date), now)) throw new AbsenceWindowClosedError(date);
 }
 
-// eslint-disable-next-line @typescript-eslint/require-await
-export const absenceRoutes: FastifyPluginAsync<{ absenceRepo: AbsenceRepo }> = async (app, opts) => {
+export const absenceRoutes: FastifyPluginAsync<{
+  absenceRepo: AbsenceRepo;
+  notificationService: NotificationService;
+  // eslint-disable-next-line @typescript-eslint/require-await
+}> = async (app, opts) => {
   app.post<{ Body: components["schemas"]["AbsenceCreate"] }>(
     "/api/v1/absences",
     { schema: { body: ABSENCE_CREATE_BODY }, preHandler: [app.authenticate] },
@@ -30,6 +34,19 @@ export const absenceRoutes: FastifyPluginAsync<{ absenceRepo: AbsenceRepo }> = a
         date: civilDate(req.body.date),
         reason: req.body.reason,
       });
+      // FR-21, fire-and-forget (design spec D5) — see entries.ts's identical
+      // guard for why this is wrapped. Retraction (DELETE, below) does not
+      // notify — see design spec §2.
+      try {
+        opts.notificationService.notify({
+          type: "AbsenceMarked",
+          studentId: req.user!.id,
+          date: rec.date,
+          reason: rec.reason,
+        });
+      } catch (err) {
+        req.log.warn({ err }, "notificationService.notify threw synchronously");
+      }
       return toApiAbsence(rec);
     },
   );
