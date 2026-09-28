@@ -649,12 +649,12 @@ describe.skipIf(!dbUrl)("POST /api/v1/daily-reports/{id}/transition — notifica
       method: "POST",
       url: `/api/v1/daily-reports/${reportId}/transition`,
       headers: bearer(await signToken({ oid: "notif-rev-1-mentor" })),
-      payload: { to: "InReview" },
+      payload: { to: "Evaluated" },
     });
 
     expect(res.statusCode).toBe(200);
     const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
-    expect(row.status).toBe("IN_REVIEW");
+    expect(row.status).toBe("EVALUATED");
   });
 
   it("calls notify() exactly once per transition, with `to` matching the request", async () => {
@@ -667,28 +667,30 @@ describe.skipIf(!dbUrl)("POST /api/v1/daily-reports/{id}/transition — notifica
     // EntrySubmitted notify() call — not the transition this test asserts on.
     notify.mockClear();
 
+    // One transition exists now, so "once per transition" is asserted over
+    // the single one there is -- and the repeat below proves the count does
+    // not creep on a rejected attempt.
     const first = await app.inject({
       method: "POST",
       url: `/api/v1/daily-reports/${reportId}/transition`,
       headers: bearerHeader,
-      payload: { to: "InReview" },
+      payload: { to: "Evaluated" },
     });
     expect(first.statusCode).toBe(200);
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "ReportTransitioned", studentId, reportId, to: "InReview" }),
+      expect.objectContaining({ type: "ReportTransitioned", studentId, reportId, to: "Evaluated" }),
     );
 
+    // Already Evaluated: 409, and crucially NO second notification -- a
+    // student must not be told their day was finished twice.
     const second = await app.inject({
       method: "POST",
       url: `/api/v1/daily-reports/${reportId}/transition`,
       headers: bearerHeader,
       payload: { to: "Evaluated" },
     });
-    expect(second.statusCode).toBe(200);
-    expect(notify).toHaveBeenCalledTimes(2);
-    expect(notify).toHaveBeenLastCalledWith(
-      expect.objectContaining({ type: "ReportTransitioned", studentId, reportId, to: "Evaluated" }),
-    );
+    expect(second.statusCode).toBe(409);
+    expect(notify).toHaveBeenCalledTimes(1);
   });
 });

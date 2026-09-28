@@ -36,7 +36,9 @@ export interface NotificationSender {
 export type NotificationEvent =
   | { type: "EntrySubmitted"; studentId: string; entryDate: string; submittedAt: Date }
   | { type: "AbsenceMarked"; studentId: string; date: string; reason: string }
-  | { type: "ReportTransitioned"; studentId: string; reportId: string; to: "InReview" | "Evaluated" };
+  // `to` is a single-member union: a report is born IN_REVIEW (ADR-0028),
+  // so Evaluated is the only state a transition can move it to.
+  | { type: "ReportTransitioned"; studentId: string; reportId: string; to: "Evaluated" };
 
 export interface NotificationService {
   /**
