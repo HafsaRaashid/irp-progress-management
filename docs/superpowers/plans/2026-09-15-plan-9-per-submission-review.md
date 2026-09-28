@@ -1,5 +1,18 @@
 # Plan 9 — Per-Submission Review Implementation Plan
 
+> **WITHDRAWN (2026-09-25).** This plan was executed in full and then reverted
+> in full before merge. The stakeholder interview — the primary record —
+> answers the question this plan is built on three times and answers it no:
+> **Q15** (tick "does NOT count" — *No*), **Q16** (approval granularity — per
+> daily report, not per item), **Q25** (day-to-day scoring — *unnecessary*).
+> Neither this plan, its spec, nor ADR-0026 ever consulted that file. See
+> [ADR-0027](../../adr/0027-stakeholder-interview-governs-over-consolidation-task-list.md)
+> and **O-18** in `docs/interview-and-prd.md` §5. Kept as the record of what
+> was built and why it was withdrawn — do not execute it again without the
+> stakeholder reconciling O-18 first.
+
+
+
 **Goal:** Let a mentor score an individual `Entry` (0-100), leave feedback, and flag whether it
 counts toward the monthly evaluation — replacing the AI-scored-cycle pipeline (FR-22-24) that O-5
 (undecided AI provider) has blocked indefinitely. This is tasks 1-4 of the

@@ -1,5 +1,18 @@
 # Per-Submission Review — Scoring, Feedback, and Evaluation Inclusion — Design
 
+> **WITHDRAWN (2026-09-25).** The design below was implemented and then
+> reverted in full before merge. It reasons from the FR table and never
+> consults `docs/stakeholder-interview.md`, the primary record, which declines
+> this design three times: **Q15** (tick "does NOT count" — *No*), **Q16**
+> (approval granularity — per daily report, not per item), **Q25**
+> (day-to-day scoring — *unnecessary*). §2 of this spec correctly identified
+> that it was superseding FRs and needed sign-off; what it missed is that the
+> answer already existed in the interview. See
+> [ADR-0027](../../adr/0027-stakeholder-interview-governs-over-consolidation-task-list.md)
+> and **O-18** in `docs/interview-and-prd.md` §5.
+
+
+
 **Date:** 2026-09-15
 **Author:** Mohaideen Abdullah (spec lead, with Claude Code)
 **Status:** Accepted — reviewed by Danella De Cruz (the "unprefilled reopen"/student-visible-score-leak

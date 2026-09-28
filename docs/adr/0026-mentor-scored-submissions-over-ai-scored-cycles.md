@@ -1,8 +1,15 @@
 # ADR-0026: Mentor-scored submissions over AI-scored cycles
 
 ## Status
-Accepted (2026-09-15). Implements O-18, per the
-`2026-09-15-per-submission-review-design.md` spec §9.
+**Superseded (2026-09-25) by
+[ADR-0027](0027-stakeholder-interview-governs-over-consolidation-task-list.md).**
+Accepted 2026-09-15, implemented, then withdrawn in full before merge — the
+code it describes is not in `main` and never was.
+
+The Context below reasons entirely from the FR table. It never consulted
+`docs/stakeholder-interview.md`, the primary record, which answers this exact
+question three times and answers it no (Q15, Q16, Q25). That omission is the
+whole of why this ADR was wrong; see ADR-0027.
 
 ## Context
 FR-22 ("AI generates a summary"), FR-23 ("AI scores the cycle, producing a
