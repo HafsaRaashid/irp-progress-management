@@ -3,6 +3,7 @@ import { cycleContaining, graceDeadlineFor, isWeekday, submissionWindow, toProgr
 import { apiClient } from "@/lib/api-client";
 import { CycleCalendar } from "@/components/cycle-calendar/cycle-calendar";
 import { toStudentCalendarDays } from "@/lib/ribbon";
+import { historyRangeFor } from "@/lib/history-range";
 import { PageTitle } from "@/components/ui/page-title";
 import { Panel } from "@/components/ui/panel";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -70,9 +71,13 @@ export async function StudentToday({ displayName, role }: { displayName: string;
   // narrower open-submission-window range this call used before -- the
   // dashboard's own StudentDay array is required-days-only and cannot
   // resolve a weekend cell's extra/none status on its own (implementation
-  // plan audit finding 3).
+  // plan audit finding 3). historyRangeFor widens `from` past the cycle
+  // start when the window's oldest target falls in the PREVIOUS cycle (a
+  // cycle-boundary day like Monday the 10th) -- narrowing to the cycle's own
+  // bounds alone silently dropped that day from the "Recent days" list below
+  // (whole-branch review finding C-2).
   const currentCycle = cycleContaining(toProgrammeDate(new Date()));
-  const query = { from: currentCycle.start, to: currentCycle.end };
+  const query = historyRangeFor(openWindow, currentCycle);
   const [{ data: dashboard, error: dashboardError }, { data, error }] = await Promise.all([
     getMyDashboard({ client }),
     listMyDays({ client, query }),

@@ -66,14 +66,48 @@ the ribbon's staggered load animation (§10) does not carry over — `CycleCalen
 160ms rise animation per cell but applies no per-cell delay, so a calendar's marks rise
 simultaneously rather than sweeping left-to-right.
 
-**Verified:** `pnpm --filter @irp/web test -- --run` (276/276), `pnpm --filter @irp/web typecheck`
-clean both before and after `AUTH_DEV_BYPASS=false pnpm --filter @irp/web build` (12 routes, all
-`ƒ`). **Not verified this session:** the e2e suite (`apps/web/e2e/dashboard-flows.spec.ts`) was
-updated for the new grid semantics but not run — it needs a reseeded local database, and the
-local dev Postgres was left in a schema state from an unrelated branch (`refactor/review-flow-rework`)
-that `prisma migrate reset` would fix, but that command is destructive and Prisma's own AI-agent
-guard correctly refused to run it without the developer's explicit confirmation. **Run the full
-e2e suite and the NFR-13 no-scroll check (spec §7, plan Task 8) before merging.**
+**Verified:** `pnpm --filter @irp/web test -- --run` (283/283 after the fix pass below),
+`pnpm --filter @irp/web typecheck` clean both before and after `AUTH_DEV_BYPASS=false pnpm
+--filter @irp/web build` (12 routes, all `ƒ`). **Not verified this session:** the e2e suite
+(`apps/web/e2e/dashboard-flows.spec.ts`, `dark-theme.spec.ts`) was updated for the new grid
+semantics but not run — it needs a reseeded local database, and the local dev Postgres was left
+in a schema state from an unrelated branch (`refactor/review-flow-rework`) that `prisma migrate
+reset` would fix, but that command is destructive and Prisma's own AI-agent guard correctly
+refused to run it without the developer's explicit confirmation. **Run the full e2e suite and
+the NFR-13 no-scroll check (spec §7, plan Task 8) before merging.**
+
+**A fresh-context whole-branch review (opus) found two Critical and five Important issues before
+any of this shipped, all now fixed except where noted:**
+- **C-1 (fixed):** `dark-theme.spec.ts` still asserted on the retired `ribbon-bar`/`ribbon-key`
+  testids — would have failed CI outright. Retargeted to the calendar's grid semantics; the key
+  test is removed (no calendar-equivalent key exists, per the RibbonKey gap above).
+- **C-2 (fixed):** `student-today.tsx`'s widened `listMyDays` query (above) silently narrowed
+  away a real, previously-fixed boundary bug — on a cycle-boundary day like Monday the 10th, the
+  open submission window still targets the previous cycle's Friday, which a query scoped to only
+  the current cycle's bounds never fetches. Fixed via a new pure helper,
+  `apps/web/lib/history-range.ts` (`historyRangeFor`), and the plan corrected at source.
+- **C-3 (still open):** the NFR-13 no-scroll gate and a live e2e run remain blocked on the same
+  Postgres-reset consent noted above.
+- **I-1 (fixed):** the mentor calendar rang the dashboard's *reported* day (which falls back to
+  the last required day on a weekend) as "today", not the real today — a weekend cell existed on
+  the grid and was never the one that actually rang. Now passes the real `toProgrammeDate(new
+  Date())`.
+- **I-2 (fixed):** the grid had no weekday column headers and adjacent-month padding was fully
+  blank rather than dimmed with its day number, contrary to the spec, ADR-0030 and this file's own
+  §7 mock. Both added.
+- **I-3 (documented, not fixed):** a pre-enrolment weekday (post-transfer) reads identically to a
+  genuinely future day — carried over unchanged from the ribbon, and recorded in §7 rather than
+  given an invented, unreviewed visual treatment.
+- **I-4 (fixed):** `CycleCalendar` re-declared `MARK_COLOR` instead of importing it from
+  `cycle-ribbon.tsx`, which explicitly asks callers not to.
+- **I-5 (fixed):** the calendar had no equivalent of the ribbon's remount-on-change key, so a
+  submission landing changed a cell's colour with no animation. Now keyed on every cell's drawn
+  state, same technique as the ribbon.
+
+Eight Minor findings were reviewed and deferred rather than fixed in this pass (per house style, a
+Minor does not enter the fix pass) — the full list is in the SDD ledger,
+`.superpowers/sdd/2026-09-29-cycle-calendar/progress.md`, kept (not deleted) alongside this branch
+until C-3 is resolved and the branch is actually ready to merge.
 
 ### 2026-08-18 — PR #17's red CI, and the web dev server moves to 3100
 

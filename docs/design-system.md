@@ -341,6 +341,14 @@ full text accessible name (§4), so the accessibility floor is not regressed, bu
 on-screen legend is gone pending a design pass. Flagged here rather than silently dropped —
 revisit before the next stakeholder demo if a legend is wanted back.
 
+**A pre-enrolment weekday reads as `future`, indistinguishable from a genuinely not-yet-reached
+day, carried over unchanged from the ribbon.** `batchDayMark`'s `enrolled === 0` branch returns
+the same outline as a day nobody has reached yet, so a student who transferred out mid-cycle
+shows PAST days on the batch calendar as if they had not happened yet, rather than as "no one was
+enrolled that day." Pre-existing, not introduced by this ADR, and the spec's own §5 edge case
+calls for dimmed pre-enrolment cells specifically — recorded here as a known gap rather than
+invented a new visual treatment without design sign-off (whole-branch review finding I-3).
+
 **Weekend extra resolution differs by audience, and this is a real, documented data limit, not
 an inconsistency to "fix" by inventing a heuristic.** The batch-level `extraAfter` field names
 only the Friday before a worked weekend, one flag per weekend pair — it cannot say whether

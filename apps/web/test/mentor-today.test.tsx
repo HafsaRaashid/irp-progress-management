@@ -70,6 +70,31 @@ describe("MentorToday", () => {
     expect(screen.getByTestId("day-label-b1")).toHaveTextContent(/last required day/i);
   });
 
+  it("rings the actual real-world today on the calendar, not the fallback day the dashboard reports (whole-branch review finding I-1)", async () => {
+    // 2026-08-01 is a Saturday. The dashboard falls back to the last
+    // required day (Friday 2026-07-31) for ITS OWN counts/label -- correct,
+    // since there is nothing to submit on a weekend -- but the calendar's
+    // "today" ring must still land on the real today (Saturday), not on the
+    // fallback date the dashboard happens to report.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-01T10:00:00Z"));
+    try {
+      apiClient.mockResolvedValue({});
+      listBatches.mockResolvedValue({ data: [BATCH] });
+      getBatchDashboardToday.mockResolvedValue({
+        data: dashboard({ isFallbackDay: true, date: "2026-07-31" }),
+        error: undefined,
+      });
+
+      render(await MentorToday({ displayName: "Dev Mentor", role: "Admin" }));
+
+      expect(screen.getByRole("gridcell", { name: /2026-08-01.*today/ })).toBeInTheDocument();
+      expect(screen.queryByRole("gridcell", { name: /2026-07-31.*today/ })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders no batch selector and exactly one calendar for a single-batch mentor", async () => {
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH] });

@@ -40,6 +40,22 @@ describe("CycleCalendar", () => {
     expect(cell.getAttribute("aria-label")).toMatch(/until/i);
   });
 
+  it("labels the grid's seven columns Monday-first (whole-branch review finding I-2)", () => {
+    const weeks = [week([{ date: "2026-08-10", kind: "weekday", mark: "ok" }])];
+    render(<CycleCalendar weeks={weeks} />);
+    const headers = screen.getAllByRole("columnheader");
+    expect(headers.map((h) => h.textContent)).toEqual([
+      "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun",
+    ]);
+  });
+
+  it("shows a dimmed day number on adjacent-month padding, not an empty cell (whole-branch review finding I-2)", () => {
+    const weeks = [week([{ date: "2026-08-03", inCycle: false }])];
+    render(<CycleCalendar weeks={weeks} />);
+    const padding = screen.getByRole("gridcell", { name: /outside this cycle/i });
+    expect(padding).toHaveTextContent("3");
+  });
+
   it("gives a weekend cell no grace-cutoff wording", () => {
     const weeks = [week([{ date: "2026-08-15", kind: "weekend", extra: true }])];
     render(<CycleCalendar weeks={weeks} />);
@@ -51,5 +67,27 @@ describe("CycleCalendar", () => {
     const weeks = [week([{ date: "2026-08-10", kind: "weekday", mark: "ok", isToday: true }])];
     render(<CycleCalendar weeks={weeks} />);
     expect(screen.getByRole("gridcell", { name: /today/i })).toBeInTheDocument();
+  });
+
+  it("remounts the grid when a mark changes, so the mount-only rise animation replays (whole-branch review finding I-5)", () => {
+    const weeks = [week([{ date: "2026-08-10", kind: "weekday", mark: "future" }])];
+    const { rerender } = render(<CycleCalendar weeks={weeks} />);
+    const before = screen.getByRole("gridcell", { name: /future/i });
+
+    rerender(<CycleCalendar weeks={[week([{ date: "2026-08-10", kind: "weekday", mark: "ok" }])]} />);
+
+    const after = screen.getByRole("gridcell", { name: /ok/i });
+    expect(after).not.toBe(before);
+  });
+
+  it("does not remount the grid on a re-render with unchanged marks", () => {
+    const weeks = [week([{ date: "2026-08-10", kind: "weekday", mark: "ok" }])];
+    const { rerender } = render(<CycleCalendar weeks={weeks} />);
+    const before = screen.getByRole("gridcell", { name: /ok/i });
+
+    rerender(<CycleCalendar weeks={weeks} label="unrelated update" />);
+
+    const after = screen.getByRole("gridcell", { name: /ok/i });
+    expect(after).toBe(before);
   });
 });

@@ -111,7 +111,14 @@ export async function MentorToday({
               cycleContaining(toProgrammeDate(new Date())),
               [...d.days],
               [...d.extraAfter],
-              d.date,
+              // The real today, NOT d.date -- d.date is the dashboard's own
+              // reported day, which falls back to the last required day on
+              // a weekend (or clamps forward at a cycle opening). That
+              // fallback is correct for ITS figures (nothing to submit on a
+              // weekend) but wrong for the calendar's ring: a weekend cell
+              // exists on the grid and must be the one that rings
+              // (whole-branch review finding I-1).
+              toProgrammeDate(new Date()),
             )}
             label={label}
           />
