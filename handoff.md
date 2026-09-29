@@ -86,8 +86,11 @@ any of this shipped, all now fixed except where noted:**
   open submission window still targets the previous cycle's Friday, which a query scoped to only
   the current cycle's bounds never fetches. Fixed via a new pure helper,
   `apps/web/lib/history-range.ts` (`historyRangeFor`), and the plan corrected at source.
-- **C-3 (still open):** the NFR-13 no-scroll gate and a live e2e run remain blocked on the same
-  Postgres-reset consent noted above.
+- **C-3 (half resolved):** PR #6's CI (all three timezone `verify` legs, which run the full
+  Playwright suite against a freshly-seeded CI database) went green, confirming the
+  `dark-theme.spec.ts`/`dashboard-flows.spec.ts` rewrites for real. The NFR-13 no-scroll check
+  (spec §7) is a manual visual step no CI job performs, and still needs the local Postgres reset
+  above before it can be run.
 - **I-1 (fixed):** the mentor calendar rang the dashboard's *reported* day (which falls back to
   the last required day on a weekend) as "today", not the real today — a weekend cell existed on
   the grid and was never the one that actually rang. Now passes the real `toProgrammeDate(new
