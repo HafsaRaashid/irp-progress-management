@@ -36,10 +36,10 @@ Recorded so these don't get reintroduced later as "improvements."
 |---|---|
 | Cream / parchment / `#F4F1EA` body background | The single most saturated AI-design default. "Warm academic" is delivered by accent, surface tint and type — **not** by tinting the canvas beige. Stripe is warm on a pure-white canvas; so is this. |
 | Crimson as the brand primary | The palette seed suggested it. Rejected: red already means **missed** here. Colliding the brand colour with the most alarming status in a status-legibility system is a usability fault, not a style choice. The seed's hue survives — reserved exclusively for `missed`. |
-| A row of three identical stat cards | The hero-metric template. FR-28's three figures are carried by the cycle ribbon (§7) instead, which shows the same numbers plus the shape of the whole cycle. |
+| A row of three identical stat cards | The hero-metric template. FR-28's three figures are carried by the cycle calendar (§7) instead, which shows the same numbers plus the shape of the whole cycle. |
 | Red for `absent` | Absence is recorded with a reason and carries **no** score penalty (`// ASSUMPTION: O-7`). Colouring it as a fault would contradict the policy the system implements. `absent` is neutral slate. |
 | A sixth status colour for `extra` | Tried and measured. A teal at hue 200 lands within **1.01:1 luminance** of the `ok` green at hue 155 — indistinguishable for a colour-vision-deficient user with the two marks adjacent in a dense ribbon. No lightness in the usable range separated them adequately, because both are mid-luminance hues. Extra is also not a compliance *outcome*, so it does not belong in the compliance ramp. **Distinguished by form instead** — see §3.2. |
-| Charts in v1 | Deferred. Numbers, status and the ribbon carry the dashboard. Revisit once real data exists. |
+| Charts in v1 | Deferred. Numbers, status and the calendar carry the dashboard. Revisit once real data exists. |
 | Border-radius above 16px, gradient text, glassmorphism, side-stripe borders, decorative grid backgrounds | House bans. |
 
 ---
@@ -111,9 +111,11 @@ There is no `rejected` token. There is no rejected state.
 Weekend work (FR-33) is **not** a compliance state and gets **no status colour**. It is drawn
 differently instead:
 
-- **In the ribbon** — a half-width slot in `--ink-muted` carrying a `+` glyph, inserted
-  between the Friday and Monday it sits between. Narrower than a required day, so the
-  weekday rhythm still reads at a glance.
+- **In the calendar (§7, current)** — a full-width weekend cell in `--ink-muted` carrying a `+`
+  glyph, distinguished by form from a compliance-marked weekday cell rather than by colour.
+- **In the ribbon (historical — superseded by the calendar, ADR-0030)** — a half-width slot in
+  `--ink-muted` carrying a `+` glyph, inserted between the Friday and Monday it sits between.
+  Narrower than a required day, so the weekday rhythm still read at a glance.
 - **In the roster** — a count, not a pill: `+2 extra`. A student can have several extra days
   in a cycle, which a single status pill cannot express.
 
@@ -272,27 +274,32 @@ ADR-0022's scope.
 
 ---
 
-## 7. The signature: the cycle ribbon
+## 7. The signature: the cycle calendar
 
 **The one element this system is remembered by.** It replaces the stat-card row and answers
-FR-28 in a single component.
+FR-28 in a single component. As of ADR-0030 (O-17) this is a month-grid calendar, superseding
+the cycle ribbon ADR-0003 introduced — the ribbon's own design record stays in `docs/adr/0003-*`
+as history, not as the current surface.
 
-A horizontal strip of every **required day** in the current cycle — one bar per weekday,
-filled by that day's batch compliance. Today is marked. Future days are outlines.
-
-**An empty weekend is not rendered at all.** A weekend *with* extra work (FR-33) appears as a
-half-width `+` slot between the Friday and Monday it falls between. So the ribbon is
-five-a-week by default and grows only where someone actually worked.
+A standard 7-column week grid, one row per week the current cycle touches — **every** calendar
+day renders a cell, weekday and weekend alike, unlike the ribbon's total omission of empty
+weekends. A weekday cell is filled by that day's batch (or, on the student's own view, personal)
+compliance, with today ringed and future weekdays drawn as outlines. Leading and trailing days
+from the adjacent months fill out the first and last rows, shown dimmed and non-interactive —
+they carry no compliance mark, since they fall outside the cycle being viewed.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                                                                        │
-│  Cycle 2 · 10 Jul – 9 Aug                    Day 12 of 22 · Colombo    │
+│  Batch Aurora · Cycle 2 · Day 12 of 22                                │
 │                                                                        │
-│  10  11 ⁺ 14  15  16  17  18  21  22  23  24  25  28  29  30  31  01   │
-│  ▓   ▓  ┊ ▓   ▓   ▒   ▓   ▓   ▓   ░   ▓   ▓   ▓   ▓   ▉   ·   ·   ·    │
-│         ↑                                        today                 │
-│      extra                                                             │
+│   Mon   Tue   Wed   Thu   Fri   Sat   Sun                              │
+│  ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐                            │
+│  │ 6 │ │ 7 │ │ 8 │ │ 9 │ │10 │ │11 │ │12 │   ← dimmed: last month     │
+│  └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘                            │
+│  ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐                            │
+│  │▓13│ │▓14│ │▒15│ │▓16│ │▓17│ │ + │ │   │   ← ring on today (14)     │
+│  └───┘ └───┘ └───┘ └───┘ └───┘ └18─┘ └19─┘       + on a worked weekend │
 │                                                                        │
 │  8 of 10 submitted today          2 late · 1 absent · 0 missed         │
 │                                                                        │
@@ -300,13 +307,15 @@ five-a-week by default and grows only where someone actually worked.
    ↑ --surface, radius 12px, padding 24–32px — the warm zone
 ```
 
-Note the dates: `10 11 ⁺ 14` — the 12th and 13th were a weekend. Someone worked one of them,
-so a narrow slot appears; had nobody worked, the ribbon would run `10 11 14` with no gap. The
-required-day rhythm stays legible either way, and the weekday rule remains visible in the
-interface rather than only enforced in the backend.
+**A weekend cell renders present, not omitted (FR-12/FR-33).** A grid cannot skip calendar days
+the way the ribbon's linear strip could without breaking the week-row structure, so every
+Saturday and Sunday gets a cell — marked `extra` (a `+` glyph, distinguished by form not colour,
+same reasoning as the ribbon's Extra slot in §3.2) when worked, otherwise blank. **This reopens
+ADR-0003 Amendment 1's reasoning about weekend visibility deliberately, not as a regression.**
 
 **Extra days never enter the compliance figures.** The "8 of 10 submitted today" line and the
-late/absent/missed counts are computed over required days only (FR-12).
+late/absent/missed counts are computed over required days only (FR-12) — unchanged from the
+ribbon.
 
 **Why this over stat cards**
 
@@ -316,25 +325,36 @@ late/absent/missed counts are computed over required days only (FR-12).
 - It serves both audiences from one component: the mentor sees batch compliance per day,
   the student sees their own marks.
 
+**Batch selector (D3, ADR-0030).** The mentor's home shows **one** calendar for a selected
+batch, not one stacked per batch — a month-grid is 5-6 rows tall where the ribbon was one row,
+and stacking two risked the NFR-13 no-scroll budget. A chip row above the calendar switches the
+selected batch, matching the existing pattern on the Cycles page (`aria-current` on the selected
+chip); it appears only when the mentor has more than one batch.
+
 **Day mark states:** full (all submitted) · partial (proportional fill) · ochre notch (late)
-· slate (absent) · red (missed) · outline (not yet reached) · ringed (today).
+· slate (absent) · red (missed) · outline (not yet reached) · ringed (today) · a weekend's `+`
+(extra) or blank.
 
-**The key (Plan 7 follow-up, ADR-0020).** These eight states — the seven above plus §3.2's Extra
-slot — are named on screen by `RibbonKey`, a `<details>` disclosure collapsed by default and
-rendered **once** below all batch sections on the **mentor** dashboard. Collapsed because §8.1's
-above-the-fold budget belongs to the figures; once because the dashboard renders a ribbon per
-batch; mentor-only because a student's ribbon shows their own status and the aggregation copy
-below would be false there. Its swatches import `MARK_COLOR` from `cycle-ribbon.tsx` rather than
-re-declaring the tokens — see `counts-row.tsx` for what re-declaring them costs. Swatch track is
-20px: at 16px a 55% `partial` fill did not read as different from a full `ok` bar and the `today`
-ring had no clearance, so the key was unreadable while its tests were green.
+**The mentor-only key (ADR-0020) is a known gap, not carried forward.** `RibbonKey` named the
+ribbon's eight states on screen; the calendar has no equivalent yet. Every cell still carries a
+full text accessible name (§4), so the accessibility floor is not regressed, but the visible
+on-screen legend is gone pending a design pass. Flagged here rather than silently dropped —
+revisit before the next stakeholder demo if a legend is wanted back.
 
-**Batch aggregation (Plan 7).** A batch day holds a mix of outcomes and the ribbon draws one
-mark, so precedence is fixed: **missed → late → absent → partial → ok**, with an outline for a
-day nobody has reached. The failure outranks the warning, the warning outranks the excused
-absence, and `partial` sits below all three because pending work is an unfinished afternoon,
-not a problem. Only `partial` is filled proportionally (`submitted / enrolled`). Implemented
-once, in `apps/web/lib/ribbon.ts`; a page that re-derives a mark is a bug.
+**Weekend extra resolution differs by audience, and this is a real, documented data limit, not
+an inconsistency to "fix" by inventing a heuristic.** The batch-level `extraAfter` field names
+only the Friday before a worked weekend, one flag per weekend pair — it cannot say whether
+Saturday, Sunday, or both were worked, so a mentor's calendar marks both cells of a flagged
+weekend identically. The student's own calendar resolves this per day, because `listMyDays`
+(unlike the batch aggregate) already returns one row per calendar date with a real status.
+
+**Batch aggregation (unchanged from the ribbon).** A batch day holds a mix of outcomes and the
+calendar draws one mark per weekday cell, so precedence is fixed: **missed → late → absent →
+partial → ok**, with an outline for a day nobody has reached. The failure outranks the warning,
+the warning outranks the excused absence, and `partial` sits below all three because pending
+work is an unfinished afternoon, not a problem. Only `partial` is filled proportionally
+(`submitted / enrolled`). Implemented once, in `apps/web/lib/ribbon.ts`; a page that re-derives
+a mark is a bug.
 
 ---
 
@@ -344,7 +364,7 @@ once, in `apps/web/lib/ribbon.ts`; a page that re-derives a mark is a bug.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│  [ cycle ribbon — the warm zone, §7 ]                                  │
+│  [ cycle calendar — the warm zone, §7 ]                                │
 ├────────────────────────────────────────────────────────────────────────┤
 │  Roster                                     Search  [        ]  Filter │
 │  ──────────────────────────────────────────────────────────────────────│
@@ -365,7 +385,7 @@ Every status carries **a glyph and a word**, never colour alone.
 
 ### 8.2 Student home — FR-29, FR-30
 
-Same ribbon, personal marks. The submission box is the primary action and sits immediately
+Same calendar, personal marks. The submission box is the primary action and sits immediately
 below it. No score, no rank, no other students, anywhere on this surface.
 
 ```
@@ -416,7 +436,7 @@ Restrained, with a few deliberate moments. 150–250ms, ease-out-quart. No bounc
 
 | Moment | Behaviour |
 |---|---|
-| Ribbon load | Marks fill left→right, staggered, **≤250ms total**. It's a list stagger, not a page-load sequence — the register drawing its own marks. |
+| Ribbon load (historical) | Marks filled left→right, staggered, **≤250ms total** — the register drawing its own marks. **Not carried over to the calendar (O-17):** `CycleCalendar` reuses the same `.ribbon-mark` 160ms rise animation per cell but does not compute a per-cell stagger delay, so a calendar's marks rise simultaneously on load rather than sweeping left-to-right. Documented gap, not a bug — revisit if the delight moment is wanted back. |
 | Submission lands | The student's day mark fills. The action visibly enters the register. This is the one delight moment in the system. |
 | Review state change | 180ms crossfade on the status pill. |
 | Everything else | 150ms, state only. |
@@ -480,8 +500,9 @@ Each names at least three rejected alternatives:
 |---|---|
 | [0001](adr/0001-tailwind-and-shadcn-for-web-ui.md) | Tailwind CSS + shadcn/ui, retuned token-first |
 | [0002](adr/0002-light-default-with-dark-support.md) | Light default, dark supported, both contrast-verified |
-| [0003](adr/0003-cycle-ribbon-as-fr-28-summary.md) | Cycle ribbon as the FR-28 summary surface |
-| [0020](adr/0020-collapsed-ribbon-key-on-the-mentor-dashboard.md) | A collapsed, mentor-only key for the cycle ribbon (§7) |
+| [0003](adr/0003-cycle-ribbon-as-fr-28-summary.md) | Cycle ribbon as the FR-28 summary surface — **superseded by 0030** |
+| [0020](adr/0020-collapsed-ribbon-key-on-the-mentor-dashboard.md) | A collapsed, mentor-only key for the cycle ribbon — historical; the calendar has no equivalent key yet (§7) |
 | [0021](adr/0021-theme-persistence-by-cookie.md) | Theme persistence by server-readable cookie; dark becomes user-reachable (§3.3) |
+| [0030](adr/0030-month-grid-calendar-over-cycle-ribbon.md) | Month-grid calendar over the cycle ribbon for the FR-28/29 summary surface (§7) |
 
 Changing anything in §3–§7 means amending the ADR that governs it, not just this file.

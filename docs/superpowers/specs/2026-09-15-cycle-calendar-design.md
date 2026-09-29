@@ -2,7 +2,11 @@
 
 **Date:** 2026-09-15
 **Author:** Mohaideen Abdullah (spec lead, with Claude Code)
-**Status:** Draft — pending review by Danella De Cruz before Hafsa Raashid begins implementation
+**Status:** Draft — pending review by Danella De Cruz. Implementation proceeded ahead of that
+review on the spec lead's own direction (2026-09-29, `docs/superpowers/plans/2026-09-29-cycle-calendar.md`),
+alongside a live correction to this spec's §3 (see below) that the spec lead confirmed directly
+rather than through Danella's review step. Danella's review of the design decisions in §1/§9
+themselves remains outstanding and non-blocking, the same footing as O-17's mentor sign-off.
 **Feeds:** a new plan, one branch and one PR, in `HafsaRaashid/irp-progress-management`
 **FRs:** FR-28, FR-29 (the surfaces this replaces) — see §2 for why this itself maps to no FR
 **Governs / closes:** reopens and supersedes [ADR-0003](../../adr/0003-cycle-ribbon-as-fr-28-summary.md)
@@ -53,8 +57,18 @@ replacing `CycleRibbon` at all three existing call sites:
   selector when the mentor has more than one batch (D3)
 - `apps/web/app/(app)/student-today.tsx` — a single calendar, no selector (a student has one
   active enrolment)
-- `apps/web/app/(app)/my-month/page.tsx` — same component, viewing a past cycle via the existing
-  cycle-picker query param, exactly as the ribbon did
+
+**Correction (implementation plan `2026-09-29-cycle-calendar.md`, audit finding 1): the
+`my-month/page.tsx` call site above never shipped.** It does not exist in the codebase this spec
+was checked against: the ribbon was moved OFF `my-month` and onto `student-today.tsx` in an
+earlier restructure (design spec §8.2), and `my-month`'s own code comments say so explicitly.
+There is also no existing cycle-picker for a student's own dashboard — `getMyDashboard` takes no
+query parameters at all, only the mentor's Cycles page (`getBatchDashboardSummary`) is
+cycle-addressable. This spec's premise for that third call site was simply wrong when written.
+Per the spec lead's decision, `my-month` is out of scope: it keeps its current day-by-day history
+view, unchanged. Building real past-cycle browsing for students would be new scope beyond this
+spec's own "no new API endpoint" boundary, not a rendering swap — raise it as its own spec if
+still wanted.
 
 **Data.** No new endpoint. `CycleCalendar` consumes the same shape `CycleRibbon` does today —
 `toBatchRibbonDays`/`toStudentRibbonDays` in `apps/web/lib/ribbon.ts` — renamed in place to

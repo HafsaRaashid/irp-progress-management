@@ -35,6 +35,46 @@ Copies of the PRD, the interview record, and the brief also sit directly under t
 
 ## 1. State of play
 
+### 2026-09-29 — Cycle calendar replaces the ribbon (O-17), and the abd-production spec backlog
+
+`docs/superpowers/specs/2026-09-15-cycle-calendar-design.md` was one of five specs authored
+2026-09-15 on a separate `abd-production` branch that never merged to `main`. Of the five, only
+this one is independent of the per-submission-scoring model (built on `feat/plan-9-per-submission-review`,
+then formally withdrawn — see `docs/adr/0027-stakeholder-interview-governs-over-consolidation-task-list.md`);
+the other four (`student-feedback-visibility`, `per-submission-review`, `monthly-score-calculation`,
+`monthly-winner-pdf`) are dead as written and were deliberately not brought over.
+
+**Shipped:** `CycleCalendar` (`apps/web/components/cycle-calendar/`), a month-grid replacing
+`CycleRibbon` at its two live call sites — `mentor-today.tsx` (now single-batch-selected with
+chip-style switching, D3) and `student-today.tsx`. `CycleRibbon` itself is untouched and unimported,
+kept as the revert path (ADR-0030, superseding ADR-0003). Plan:
+`docs/superpowers/plans/2026-09-29-cycle-calendar.md`.
+
+**Two real gaps from the spec's own premises, found during the audit and resolved with the spec
+lead before writing the plan, not built around silently:**
+- The spec's third call site, `my-month/page.tsx`, never carried a ribbon and has no cycle-picker
+  for a student's own dashboard (`getMyDashboard` takes no query params) — dropped from scope.
+- `extraAfter` is Friday-anchored, one flag per weekend, and cannot say which of Saturday/Sunday
+  was worked — the mentor's calendar marks both cells of a flagged weekend identically. The
+  student's calendar does not share this limit: `listMyDays` already returns real per-day status
+  for every calendar date, so its weekend cells resolve independently.
+
+**Two known, deliberate deviations, not regressions:** the mentor-only `RibbonKey` legend
+(ADR-0020) has no calendar equivalent yet — every cell still carries a full accessible name, so
+the accessibility floor holds, but the visible on-screen key is gone pending a design pass. And
+the ribbon's staggered load animation (§10) does not carry over — `CycleCalendar` reuses the same
+160ms rise animation per cell but applies no per-cell delay, so a calendar's marks rise
+simultaneously rather than sweeping left-to-right.
+
+**Verified:** `pnpm --filter @irp/web test -- --run` (276/276), `pnpm --filter @irp/web typecheck`
+clean both before and after `AUTH_DEV_BYPASS=false pnpm --filter @irp/web build` (12 routes, all
+`ƒ`). **Not verified this session:** the e2e suite (`apps/web/e2e/dashboard-flows.spec.ts`) was
+updated for the new grid semantics but not run — it needs a reseeded local database, and the
+local dev Postgres was left in a schema state from an unrelated branch (`refactor/review-flow-rework`)
+that `prisma migrate reset` would fix, but that command is destructive and Prisma's own AI-agent
+guard correctly refused to run it without the developer's explicit confirmation. **Run the full
+e2e suite and the NFR-13 no-scroll check (spec §7, plan Task 8) before merging.**
+
 ### 2026-08-18 — PR #17's red CI, and the web dev server moves to 3100
 
 Two things, both outside any plan. **Both merged the same day — #17 then #18 — and `main` is now at

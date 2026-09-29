@@ -50,7 +50,7 @@ list the seed and the dev sign-in picker both read.
 | **Kavindu Jayasuriya** | Batch 1 | Records absences with reasons. Read his compliance figure carefully — see O-7 below. |
 | **Tharindu Weerasinghe** | Batch 1 | **Archived.** Must not appear on any active roster or cycle list (FR-5). |
 | **Ishara Gunawardena** | Batch 2 | Compliant. |
-| **Dilini Rathnayake** | Batch 2 | Works weekends. Her entries drive the `+N extra` figure and the ribbon's half-width Extra slots (FR-33). |
+| **Dilini Rathnayake** | Batch 2 | Works weekends. Her entries drive the `+N extra` figure and the calendar's weekend `+` cells (FR-33). |
 | **Ramesh Kumar** | Batch 2 | Joined mid-cycle. His pre-enrolment weekdays read `—`, not `missed` (FR-27). |
 | **Amaya Wickramasinghe** | Batch 2 | Transferred Batch 1 → Batch 2 mid-programme (FR-8). |
 | **Chamodi Herath** | Batch 2 | Mixed record — some late, some missed, some absent. |
@@ -74,28 +74,30 @@ no longer a topbar control.
 
 ### 1. Today — the must-ship screen (FR-28, SC-4)
 
-You land here. One block per batch, each with a cycle ribbon and the figures beneath it.
+You land here. **As of O-17 (ADR-0030), one calendar for one selected batch, with a chip row to
+switch batches — not one ribbon stacked per batch.** Batch 1 is selected by default; click a
+chip to switch.
 
 **What to point at:**
 
-- **Batch 1 reads `Cycle 3`. Batch 2 reads `Cycle 1`. Both show the same calendar
-  dates.** This is the whole of FR-6 and FR-9 in one glance: cycle *boundaries* are fixed calendar
-  months (the 10th to the 9th) for everyone, but which cycle is a batch's *first* depends on when
-  it was admitted. Batch 1 started two cycles earlier, so it is on its third. Nobody has to explain
-  the rule; the two ribbons say it.
-- **The ribbon is one bar per required day.** Weekends are absent by construction — the strip is
-  five-a-week and grows a narrow `+` slot only where somebody actually worked a weekend. Look at
-  Batch 2's ribbon for those slots; Dilini put them there.
+- **Batch 1 reads `Cycle 3`. Switch the chip to Batch 2 and it reads `Cycle 1`, over the same
+  calendar dates.** This is the whole of FR-6 and FR-9 in one glance: cycle *boundaries* are fixed
+  calendar months (the 10th to the 9th) for everyone, but which cycle is a batch's *first* depends
+  on when it was admitted. Batch 1 started two cycles earlier, so it is on its third. Nobody has to
+  explain the rule; switching the chip says it.
+- **The calendar is a week-row grid, one cell per calendar day — weekends included, not omitted.**
+  A worked weekend renders a `+` in muted grey; a quiet one renders blank. Switch to Batch 2 and
+  look for the `+` cells; Dilini put them there.
 - **"N of M submitted", then late / absent / missed.** Every figure carries a word as well as a
   colour, so it reads correctly in greyscale and for a colour-blind viewer.
 - **`+4 extra this cycle` on Batch 2** is in muted grey, not a status colour. Weekend work is
   recorded and surfaced, but it is not a compliance state and never enters a denominator.
-- **Open "How to read this" below the two batches** (ADR-0020). It names all eight marks, and then
-  says the thing worth saying out loud: **each bar is the worst outcome in the batch that day**,
-  ranked missed → late → absent → partly in → on time. So a red bar means at least one student
-  missed — not that everybody did. If you demo one thing about the ribbon, demo this; it is the
-  reading a viewer gets wrong unprompted. It is collapsed by default because §8.1 keeps the fold
-  for the figures.
+- **Each weekday cell is the worst outcome in the batch that day**, ranked missed → late → absent
+  → partly in → on time. So a red cell means at least one student missed — not that everybody did.
+  If you demo one thing about the calendar, demo this; it is the reading a viewer gets wrong
+  unprompted. **The on-screen legend (ADR-0020) that used to name this for the ribbon has no
+  calendar equivalent yet** — say it out loud instead; every cell's accessible name still states
+  it for assistive tech, but there is nothing to visually open and point at.
 
 **If you are demoing in the morning, read this first.** See "What surprised us" #1 — the counts
 will legitimately read `0 of 4 submitted`, and you need to be able to say why without hesitating.
@@ -182,6 +184,8 @@ a third panel stacked under `Transfer` (ADR-0023). **Register** is not here — 
 
 ### 7. Today
 
+- **The same calendar the mentor sees, but this student's own marks** (O-17) — one calendar,
+  no batch selector, since a student has one active enrolment.
 - The composer offers **only legal target dates** — today and the previous weekday. There is no
   date field to type a wrong date into; the rule is enforced by construction in the interface as
   well as at the API (FR-15).
@@ -195,8 +199,8 @@ a third panel stacked under `Transfer` (ADR-0023). **Register** is not here — 
 `My month` in the sidebar.
 
 - **"Month 3 of 6"** — the programme clock, which runs from the student's *first* enrolment. A
-  transfer does not reset it.
-- The same ribbon, but showing this student's own marks rather than the batch's.
+  transfer does not reset it. **No calendar here** — that lives on the student's own Today page
+  (§7 below); this page is the day-by-day history the calendar doesn't show.
 - The counts line, then **"Strengths and areas to develop"**, which reads *"No evaluation yet —
   your first summary appears after your cycle closes."* Designed copy. Every student sees it in
   this release.
@@ -255,7 +259,7 @@ around 17:00 Colombo, so if you seed and demo at 9am, today's entries do not exi
 Today legitimately reads `0 of 4 submitted`, with zero late, zero absent and zero missed.
 
 Nothing is broken. Those students are `pending` — the grace window is still open, and a day only
-becomes `missed` once it closes. But `0 of 4` above an empty-looking ribbon is a poor opening
+becomes `missed` once it closes. But `0 of 4` above an empty-looking calendar is a poor opening
 slide.
 
 **Mitigation for a morning demo:** open on **Cycles** instead of Today, where the full month's
@@ -303,5 +307,5 @@ Carried honestly rather than quietly fixed.
   shape), so it should be fixed in both places at once or not at all.
 - **The day history has no heading or list semantics**, so a screen-reader user cannot navigate it
   by heading. Consistent with the other pages, but this is the primary content of My month.
-- **"Month N of 6" is the quietest text on its own page** — it renders only as the ribbon's caption
-  in muted 12px, despite being the figure FR-29 names explicitly.
+- **"Month N of 6" is the quietest text on its own page** — it renders only as the calendar's
+  caption in muted 12px, despite being the figure FR-29 names explicitly.
