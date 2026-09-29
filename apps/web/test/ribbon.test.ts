@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { batchDayMark, studentDayMark, toBatchRibbonDays, toStudentRibbonDays } from "@/lib/ribbon";
+import { civilDate } from "@irp/core";
+import { batchDayMark, studentDayMark, toBatchCalendarDays, toStudentCalendarDays } from "@/lib/ribbon";
 
 const day = (over: Partial<Parameters<typeof batchDayMark>[0]> = {}) => ({
   enrolled: 10, submitted: 10, late: 0, absent: 0, missed: 0, pending: 0, ...over,
@@ -52,29 +53,72 @@ describe("batchDayMark", () => {
   });
 });
 
-describe("toStudentRibbonDays / toBatchRibbonDays", () => {
-  it("rings today without replacing its real mark", () => {
-    const days = toStudentRibbonDays(
-      [{ date: "2026-08-03", status: "missed" }, { date: "2026-08-04", status: "onTime" }],
-      "2026-08-03",
+describe("toBatchCalendarDays", () => {
+  const bounds = { start: civilDate("2026-08-10"), end: civilDate("2026-09-09") };
+
+  it("marks a weekday cell from the matching DayCompliance row", () => {
+    const weeks = toBatchCalendarDays(
+      bounds,
+      [{ date: "2026-08-10", enrolled: 4, submitted: 4, late: 0, absent: 0, missed: 0, pending: 0 }],
+      [],
+      "2026-08-10",
     );
-    expect(days[0]).toEqual({ date: "2026-08-03", mark: "missed", isToday: true });
-    expect(days[1]!.isToday).toBeUndefined();
+    const cell = weeks.flat().find((c) => c.date === "2026-08-10")!;
+    expect(cell.kind).toBe("weekday");
+    expect(cell.mark).toBe("ok");
+    expect(cell.isToday).toBe(true);
   });
 
-  it("carries fill through for a partial batch day and rings today there too", () => {
-    const days = toBatchRibbonDays(
-      [{ date: "2026-08-03", enrolled: 10, submitted: 5, late: 0, absent: 0, missed: 0, pending: 5 }],
-      "2026-08-03",
-    );
-    expect(days[0]).toEqual({ date: "2026-08-03", mark: "partial", fill: 0.5, isToday: true });
+  it("marks BOTH weekend days of a flagged pair as extra (extraAfter cannot tell Saturday from Sunday)", () => {
+    // 2026-08-14 is a Friday; extraAfter names it to flag the following weekend.
+    const weeks = toBatchCalendarDays(bounds, [], ["2026-08-14"], "2026-08-10");
+    const saturday = weeks.flat().find((c) => c.date === "2026-08-15")!;
+    const sunday = weeks.flat().find((c) => c.date === "2026-08-16")!;
+    expect(saturday.kind).toBe("weekend");
+    expect(saturday.extra).toBe(true);
+    expect(sunday.kind).toBe("weekend");
+    expect(sunday.extra).toBe(true);
   });
 
-  it("leaves isToday off entirely when today falls outside the series — a weekend", () => {
-    const days = toBatchRibbonDays(
-      [{ date: "2026-07-31", enrolled: 1, submitted: 1, late: 0, absent: 0, missed: 0, pending: 0 }],
-      "2026-08-01",
+  it("leaves an unflagged weekend as extra: false, distinct from adjacent-month padding", () => {
+    const weeks = toBatchCalendarDays(bounds, [], [], "2026-08-10");
+    const saturday = weeks.flat().find((c) => c.date === "2026-08-15")!;
+    expect(saturday.inCycle).toBe(true);
+    expect(saturday.kind).toBe("weekend");
+    expect(saturday.extra).toBe(false);
+  });
+
+  it("adjacent-month padding carries no kind and is never today", () => {
+    // bounds.start (2026-08-10) is itself a Monday, so week 0 has no leading
+    // padding -- the trailing padding is on the LAST week instead, since
+    // bounds.end (2026-09-09) is a Wednesday.
+    const weeks = toBatchCalendarDays(bounds, [], [], "2026-08-10");
+    const padding = weeks[weeks.length - 1]!.find((c) => !c.inCycle)!;
+    expect(padding.kind).toBeUndefined();
+    expect(padding.isToday).toBe(false);
+  });
+});
+
+describe("toStudentCalendarDays", () => {
+  const bounds = { start: civilDate("2026-08-10"), end: civilDate("2026-09-09") };
+
+  it("marks a weekend cell extra or none independently per day", () => {
+    const weeks = toStudentCalendarDays(
+      bounds,
+      [
+        { date: "2026-08-15", status: "extra" },
+        { date: "2026-08-16", status: "none" },
+      ],
+      "2026-08-10",
     );
-    expect(days.every((d) => d.isToday === undefined)).toBe(true);
+    expect(weeks.flat().find((c) => c.date === "2026-08-15")!.extra).toBe(true);
+    expect(weeks.flat().find((c) => c.date === "2026-08-16")!.extra).toBe(false);
+  });
+
+  it("marks a weekday cell via studentDayMark", () => {
+    const weeks = toStudentCalendarDays(bounds, [{ date: "2026-08-11", status: "late" }], "2026-08-10");
+    const cell = weeks.flat().find((c) => c.date === "2026-08-11")!;
+    expect(cell.kind).toBe("weekday");
+    expect(cell.mark).toBe("late");
   });
 });

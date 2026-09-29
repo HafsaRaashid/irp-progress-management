@@ -1,5 +1,7 @@
-import type { DayMark, RibbonDay } from "@/components/cycle-ribbon/cycle-ribbon";
+import type { DayMark } from "@/components/cycle-ribbon/cycle-ribbon";
 import type { DayStatus } from "@irp/client";
+import { addDays, civilDate, type CycleBounds } from "@irp/core";
+import { weeksForCycle } from "./calendar-grid";
 
 /** The subset of DayCompliance the mark rule reads. Structural, so either the SDK type or a literal satisfies it. */
 export interface DayComplianceLike {
@@ -61,26 +63,94 @@ export function batchDayMark(day: Omit<DayComplianceLike, "date">): { mark: DayM
   return { mark: "partial", fill: day.submitted / day.enrolled };
 }
 
-/**
- * `isToday` is set only when today is actually in the series — a weekend, or
- * a date outside the cycle, leaves every bar unringed. The ring is a
- * decoration drawn OVER the real mark, never a substitute for it.
- */
-export function toStudentRibbonDays(
-  days: { date: string; status: DayStatus }[],
-  today: string,
-): RibbonDay[] {
-  return days.map((d) => ({
-    date: d.date,
-    mark: studentDayMark(d.status),
-    ...(d.date === today && { isToday: true }),
-  }));
+export type WeekdayCellMark = DayMark;
+
+/** One calendar-grid cell, replacing RibbonDay (O-17, ADR-0030). */
+export interface CalendarCell {
+  date: string;
+  isToday: boolean;
+  /** False for adjacent-month padding — carries no compliance data, never interactive. */
+  inCycle: boolean;
+  /** Undefined for adjacent-month padding. */
+  kind?: "weekday" | "weekend";
+  /** Only when kind === "weekday". */
+  mark?: WeekdayCellMark;
+  /** Only when kind === "weekday" && mark === "partial", 0..1. */
+  fill?: number;
+  /**
+   * Only when kind === "weekend". The batch transform can only resolve this
+   * per WEEKEND PAIR (extraAfter names the Friday, not the actual Saturday/
+   * Sunday worked) — both cells of a flagged weekend get the same value. The
+   * student transform resolves it per DAY, from listMyDays' real per-date
+   * status. See the implementation plan's audit finding 2.
+   */
+  extra?: boolean;
 }
 
-export function toBatchRibbonDays(days: DayComplianceLike[], today: string): RibbonDay[] {
-  return days.map((d) => ({
-    date: d.date,
-    ...batchDayMark(d),
-    ...(d.date === today && { isToday: true }),
-  }));
+function isWeekendDate(date: string): boolean {
+  // Mirrors isWeekday's own UTC-midnight parsing (@irp/core) — not a new rule.
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+function baseCell(cell: { date: string; inCycle: boolean }, today: string): Pick<CalendarCell, "date" | "isToday" | "inCycle"> {
+  return { date: cell.date, isToday: cell.inCycle && cell.date === today, inCycle: cell.inCycle };
+}
+
+/**
+ * Batch compliance over a full cycle grid (replaces toBatchRibbonDays, O-17).
+ * `extraAfter` is Friday-anchored (one flag per weekend, not per day) — both
+ * weekend cells of a flagged pair render extra: true. Deliberate scope limit,
+ * not a bug: see the implementation plan's audit finding 2.
+ */
+export function toBatchCalendarDays(
+  bounds: CycleBounds,
+  days: DayComplianceLike[],
+  extraAfter: string[],
+  today: string,
+): CalendarCell[][] {
+  const byDate = new Map(days.map((d) => [d.date, d]));
+  const extraWeekends = new Set<string>(
+    extraAfter.flatMap((friday) => [addDays(civilDate(friday), 1), addDays(civilDate(friday), 2)]),
+  );
+
+  return weeksForCycle(bounds).map((week) =>
+    week.map((cell): CalendarCell => {
+      const base = baseCell(cell, today);
+      if (!cell.inCycle) return base;
+      if (isWeekendDate(cell.date)) {
+        return { ...base, kind: "weekend", extra: extraWeekends.has(cell.date) };
+      }
+      const day = byDate.get(cell.date);
+      if (day === undefined) return { ...base, kind: "weekday", mark: "future" };
+      const { mark, fill } = batchDayMark(day);
+      return { ...base, kind: "weekday", mark, ...(fill !== undefined && { fill }) };
+    }),
+  );
+}
+
+/**
+ * Student compliance over a full cycle grid (replaces toStudentRibbonDays,
+ * O-17). Unlike the batch side, `days` here comes from listMyDays and already
+ * carries one row per calendar date (including weekends) with a real
+ * DayStatus, so weekend extra/none resolves per day, not per weekend pair.
+ */
+export function toStudentCalendarDays(
+  bounds: CycleBounds,
+  days: { date: string; status: DayStatus }[],
+  today: string,
+): CalendarCell[][] {
+  const byDate = new Map(days.map((d) => [d.date, d.status]));
+
+  return weeksForCycle(bounds).map((week) =>
+    week.map((cell): CalendarCell => {
+      const base = baseCell(cell, today);
+      if (!cell.inCycle) return base;
+      const status = byDate.get(cell.date) ?? "future";
+      if (isWeekendDate(cell.date)) {
+        return { ...base, kind: "weekend", extra: status === "extra" };
+      }
+      return { ...base, kind: "weekday", mark: studentDayMark(status) };
+    }),
+  );
 }
