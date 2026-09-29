@@ -7,7 +7,7 @@ Six spec files, one Playwright config with **two** projects, one seeded database
 | `signin.spec.ts` | The chain this slice exists to prove: browser → Auth.js → encrypted cookie → decrypt → `@irp/client` → `apps/api` → Postgres → rendered user. Every dev-identity-picker branch, including the unregistered-user 403 and the never-a-token-in-the-browser assertion. |
 | `student-flows.spec.ts` | The Plan 6 student surface — on-time submission, the legal submission window (never older than the previous weekday), the absence round-trip, FR-20's lock from the student's own view, the mentor-page redirect, and sign-out. Signed in as `dev-student-1` ("Dev Student") only — see "Personas" below for why. |
 | `mentor-flows.spec.ts` | The Plan 6 mentor surface — Roster (row-per-student, the weekend persona's Extra badge), Roster → Review → attendance/tasks record → Submitted → In Review → Evaluated → locked, the Students directory's archive flow, and registering + archiving a throwaway student. Registration itself happens on `/settings` (ADR-0022, Plan 7A) — the People directory on `/students` only lists and archives. Signed in as `dev-admin-1` ("Dev Mentor"). |
-| `dashboard-flows.spec.ts` | The Plan 7 dashboards — mentor Today's per-batch figures and ribbon, the Cycles view, and FR-29/FR-30's student My month. Signed in as `dev-admin-1` for the mentor side and `dev-student-1` for the student side; see its own section further below for the full test table. |
+| `dashboard-flows.spec.ts` | The Plan 7 dashboards — mentor Today's per-batch figures and calendar (O-17), the Cycles view, and FR-29/FR-30's student My month. Signed in as `dev-admin-1` for the mentor side and `dev-student-1` for the student side; see its own section further below for the full test table. |
 | `dark-theme.spec.ts` | The Plan 7A dark guard — every reachable view renders, and its landmark content is present, with the OS reporting dark: the six mentor views plus `/review/<id>` (reached via the Roster's own "Review" link, the way `mentor-flows.spec.ts` does), the two student views, and the bare `/signin` frame. Read-only, and runs under the `chromium-dark` project only; see "Two projects, not one" below. |
 | `settings.spec.ts` | The Plan 7A Settings page — the theme switch's cookie round trip (attribute survives a reload only if the server actually read the cookie) and, since the fix wave, that the attribute genuinely applies the dark tokens; and that a student reaches Settings with Appearance only, no mentor sections. Runs in the default `chromium` project (light), signed in as both `dev-admin-1` and `dev-student-1`. |
 
@@ -149,14 +149,17 @@ If the JWKS fetch fails, `apps/api` returns **503** rather than 401 (Task
 
 ## `dashboard-flows.spec.ts` (Plan 7)
 
-Seven tests over the same seeded personas, covering FR-28's mentor dashboard,
-the Cycles view, and FR-29/FR-30's student My month.
+Ten tests over the same seeded personas, covering FR-28's mentor dashboard, the Cycles view,
+and FR-29/FR-30's student My month. This table does not list every one individually — two
+§8.2-restructure checks (the student's own calendar sits above the composer; My month carries
+no calendar of its own) are in the file but not repeated below.
 
 | Test | Personas it touches | What it proves |
 |---|---|---|
-| N of M submitted, per batch | `dev-admin-1`'s view of Batch 1 and Batch 2 | The must-ship figure renders for every batch, N never exceeds M, and N is never smaller than the late count shown beside it |
+| N of M submitted, per batch | `dev-admin-1`'s view of Batch 1 and Batch 2 | The must-ship figure renders for every batch, N never exceeds M, and N is never smaller than the late count shown beside it. Navigates via the batch chip between iterations (O-17): only the selected batch's region renders per page load, unlike the old ribbon stack |
 | M matches the Roster's row count | Batch 1's active students | The dashboard's denominator and the Roster agree for the *same day* |
-| Ribbon length matches the cycle it names | Batch 1 | The figcaption's "Day x of y" and the ribbon's rendered day count agree — see the caveat below |
+| Calendar's weekday-cell count matches the cycle it names | Batch 1 | The figcaption's "Day x of y" and the calendar's own weekday-cell count agree — see the caveat below |
+| Switching the batch chip re-renders the calendar (O-17, D3) | Batch 1 and Batch 2 | The calendar's caption updates to the newly selected batch, and only one calendar exists on the page at a time |
 | Cycles lists every active Batch 1 student, never a score | All Batch A personas; the archived one (Tharindu) | FR-5 — an archived student leaves active views; and no score exists to leak |
 | Month N of 6, own pills, empty S&W | `dev-student-1` (fully compliant) | FR-29's three elements render together |
 | No score, rank, or peer name | `dev-student-1` vs every other persona | FR-30, asserted against the whole `<main>` text |
@@ -178,9 +181,9 @@ calendar. A hard-coded count, date or percentage would pass on the day it was
 written and fail on the 10th.
 
 So these tests never assert a literal figure. They read what the page reports
-and check it against something that must agree: N against M, the ribbon's
-declared cycle length against its own rendered day count, the dashboard's
-denominator against the Roster's row count for the same day.
+and check it against something that must agree: N against M, the calendar's
+declared cycle length against its own rendered weekday-cell count, the
+dashboard's denominator against the Roster's row count for the same day.
 
 **One trap worth knowing.** The Roster defaults to *today*; mentor Today falls
 back to the *last required day* when today is a weekend. Comparing the two
@@ -189,14 +192,17 @@ Saturday. The row-count test therefore addresses the Roster explicitly by the
 ISO date the dashboard exposes on `data-date`, alongside the batch id in its
 `data-testid` — neither value hard-coded, and no weekday assumption.
 
-### What the ribbon-length check does and does not prove
+### What the calendar weekday-cell-count check does and does not prove
 
-Both figures it compares — the figcaption's "Day x of **y**" and the ribbon's
-`required-day-count` — derive from the **same** `cycleWorkingDays(bounds)`
-array, computed once per request. So the check catches a rendering bug (the UI
-reading the wrong field, or the two elements falling out of step), but it
-cannot catch a backend miscalculation of `requiredDayCount` itself: both
-numbers would then be wrong identically and still agree.
+Both figures it compares — the figcaption's "Day x of **y**" and the count of
+gridcells whose accessible name contains "submit until" (only real weekday
+cells carry that wording; weekend and adjacent-month-padding cells never do,
+per `apps/web/components/cycle-calendar/cycle-calendar.tsx`'s `cellLabel`) —
+derive from the **same** `cycleWorkingDays(bounds)` array, computed once per
+request. So the check catches a rendering bug (the UI reading the wrong
+field, or the two elements falling out of step), but it cannot catch a
+backend miscalculation of `requiredDayCount` itself: both numbers would then
+be wrong identically and still agree.
 
 The general-purpose proof that `cycleWorkingDays` itself is correct —
 weekday-only, starts/ends within the cycle's own bounds, a plausible count for

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { SEED_BATCH_NAMES, SEED_STUDENTS } from "@irp/fixtures";
-import { signInAsMentor, signInAsStudent } from "./helpers";
+import { signInAsMentor, signInAsStudent, switchToBatch } from "./helpers";
 
 /**
  * Plan 7's dashboards over the seeded personas. Everything here is relational:
@@ -11,7 +11,11 @@ test.describe("mentor Today (FR-28)", () => {
   test("shows N of M submitted for each seeded batch, with N never exceeding M nor undercounting late submitters", async ({ page }) => {
     await signInAsMentor(page);
 
+    // O-17: the mentor's home now shows ONE calendar for a selected batch,
+    // with a chip row to switch -- unlike the old ribbon stack, both
+    // batches' regions never coexist on the page at once.
     for (const name of Object.values(SEED_BATCH_NAMES)) {
+      await switchToBatch(page, name);
       const section = page.getByRole("region", { name });
       await expect(section).toBeVisible();
       const counts = await section.getByText(/\d+ of \d+ submitted/).textContent();
@@ -55,21 +59,36 @@ test.describe("mentor Today (FR-28)", () => {
     await expect(page.locator("tbody tr")).toHaveCount(enrolled);
   });
 
-  test("renders a ribbon whose required-day count matches the cycle length it names, with an actual bar per day", async ({ page }) => {
+  test("renders a calendar grid whose weekday-cell count matches the cycle's required-day count", async ({ page }) => {
     await signInAsMentor(page);
     const section = page.getByRole("region", { name: SEED_BATCH_NAMES.A });
     const figure = section.getByRole("figure");
     const label = await figure.locator("figcaption").textContent();
     const declared = Number(/of (\d+)/.exec(label!)![1]);
-    await expect(section.getByTestId("required-day-count"))
-      .toHaveText(`${String(declared)} required days in this cycle`);
 
-    // Asserting the figure exists proves nothing about what it drew. One
-    // <li> bar renders per required day, plus an extra half-slot on a
-    // worked weekend -- so the bar count can only ever meet or exceed the
-    // declared day count, never fall short of it.
-    const barCount = await figure.locator("ol > li").count();
-    expect(barCount).toBeGreaterThanOrEqual(declared);
+    // O-17: CycleCalendar renders one gridcell per calendar day, including
+    // weekends and dimmed adjacent-month padding -- neither of those carries
+    // the "submit until" wording every real weekday cell's accessible name
+    // does (Task 4's cellLabel), so counting by that text is what isolates
+    // required days from the rest of the grid.
+    const weekdayCells = await figure.getByRole("gridcell", { name: /submit until/i }).count();
+    expect(weekdayCells).toBe(declared);
+  });
+
+  test("switching the batch chip re-renders the calendar for the newly selected batch", async ({ page }) => {
+    await signInAsMentor(page);
+
+    const initialLabel = await page.getByRole("figure").locator("figcaption").textContent();
+    expect(initialLabel).toContain(SEED_BATCH_NAMES.A);
+
+    await switchToBatch(page, SEED_BATCH_NAMES.B);
+
+    // One calendar on the page at a time (D3) -- there is no cycle selection
+    // on this page to carry over, unlike the Cycles page's batch/cycle pair.
+    await expect(page.getByRole("figure")).toHaveCount(1);
+    const newLabel = await page.getByRole("figure").locator("figcaption").textContent();
+    expect(newLabel).toContain(SEED_BATCH_NAMES.B);
+    expect(newLabel).not.toContain(SEED_BATCH_NAMES.A);
   });
 
   test("the Cycles page lists a row per batch-1 student and never a score", async ({ page }) => {

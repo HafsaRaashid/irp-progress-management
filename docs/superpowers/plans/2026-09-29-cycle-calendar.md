@@ -772,9 +772,16 @@ const currentCycle = cycleContaining(toProgrammeDate(new Date()));
 const query = { from: currentCycle.start, to: currentCycle.end };
 ```
 
-This makes `data` (from `listMyDays`) cover the whole cycle. The existing "Recent days" section
-below still reads from `byDate`/`openWindow.targetDates` exactly as before — nothing there changes,
-since `byDate` is a superset of what it held before.
+**Correction (whole-branch review finding C-2): the claim below that `byDate` is a superset of
+what it held before is false at a cycle boundary**, and the plan as originally written shipped
+that bug. On a day like Monday the 10th, `openWindow.targetDates` reaches back to Friday the 7th
+— the previous cycle — but a query scoped to `currentCycle.start..end` alone never fetches that
+date, so `byDate` loses a row the unwidened query used to have. The actual fix is
+`historyRangeFor` (`apps/web/lib/history-range.ts`, added in the fix pass): `from` is the earlier
+of the window's oldest target and the cycle start, `to` stays the cycle end. This makes `data`
+(from `listMyDays`) cover the whole cycle AND the open window. The existing "Recent days" section
+below still reads from `byDate`/`openWindow.targetDates` exactly as before — nothing there
+changes.
 
 Add `cycleContaining` to the existing `@irp/core` import.
 

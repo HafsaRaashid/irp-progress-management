@@ -1,8 +1,9 @@
 import { getMyDashboard, listMyDays, type Role } from "@irp/client";
-import { graceDeadlineFor, isWeekday, submissionWindow } from "@irp/core";
+import { cycleContaining, graceDeadlineFor, isWeekday, submissionWindow, toProgrammeDate } from "@irp/core";
 import { apiClient } from "@/lib/api-client";
-import { CycleRibbon } from "@/components/cycle-ribbon/cycle-ribbon";
-import { toStudentRibbonDays } from "@/lib/ribbon";
+import { CycleCalendar } from "@/components/cycle-calendar/cycle-calendar";
+import { toStudentCalendarDays } from "@/lib/ribbon";
+import { historyRangeFor } from "@/lib/history-range";
 import { PageTitle } from "@/components/ui/page-title";
 import { Panel } from "@/components/ui/panel";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -64,22 +65,22 @@ const ENTRY_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
 export async function StudentToday({ displayName, role }: { displayName: string; role: Role }) {
   const client = await apiClient();
   const openWindow = submissionWindow(new Date());
-  const oldest = openWindow.targetDates[openWindow.targetDates.length - 1];
-  const newest = openWindow.targetDates[0];
 
-  // listMyDays() defaults to the current evaluation cycle. The window's
-  // oldest target can fall in the PREVIOUS cycle -- e.g. today is Monday the
-  // 10th (a cycle boundary), so the previous weekday is Friday the 7th --
-  // and the default range would silently drop that day's entries. An
-  // explicit range spanning the whole submission window avoids it.
-  //
-  // Two full object literals rather than a single one with `query:
-  // maybeUndefined` -- exactOptionalPropertyTypes forbids assigning
-  // `undefined` to an optional property that isn't itself typed `| undefined`.
-  const query = oldest !== undefined && newest !== undefined ? { from: oldest, to: newest } : undefined;
+  // CycleCalendar (O-17) renders the WHOLE current cycle, weekends included,
+  // so listMyDays is queried over the cycle's own bounds rather than the
+  // narrower open-submission-window range this call used before -- the
+  // dashboard's own StudentDay array is required-days-only and cannot
+  // resolve a weekend cell's extra/none status on its own (implementation
+  // plan audit finding 3). historyRangeFor widens `from` past the cycle
+  // start when the window's oldest target falls in the PREVIOUS cycle (a
+  // cycle-boundary day like Monday the 10th) -- narrowing to the cycle's own
+  // bounds alone silently dropped that day from the "Recent days" list below
+  // (whole-branch review finding C-2).
+  const currentCycle = cycleContaining(toProgrammeDate(new Date()));
+  const query = historyRangeFor(openWindow, currentCycle);
   const [{ data: dashboard, error: dashboardError }, { data, error }] = await Promise.all([
     getMyDashboard({ client }),
-    listMyDays(query !== undefined ? { client, query } : { client }),
+    listMyDays({ client, query }),
   ]);
 
   const byDate = new Map((data ?? []).map((day) => [day.date, day]));
@@ -118,9 +119,13 @@ export async function StudentToday({ displayName, role }: { displayName: string;
       {dashboard !== undefined && (
         <>
           <div className="mb-6">
-            <CycleRibbon
-              days={toStudentRibbonDays([...dashboard.days], dashboard.today)}
-              extraAfter={[...dashboard.extraAfter]}
+            {/* ASSUMPTION: O-17 -- the calendar replaces the ribbon; no FR asks for it. */}
+            <CycleCalendar
+              weeks={toStudentCalendarDays(
+                currentCycle,
+                (data ?? []).map((d) => ({ date: d.date, status: d.status })),
+                dashboard.today,
+              )}
               label={cycleHeading(dashboard)}
             />
           </div>

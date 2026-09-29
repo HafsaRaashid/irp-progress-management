@@ -12,6 +12,7 @@ const { listBatches, getBatchDashboardToday } = vi.hoisted(() => ({
 vi.mock("@irp/client", () => ({ listBatches, getBatchDashboardToday }));
 
 const BATCH = { id: "b1", name: "Batch Aurora", startDate: "2026-05-10", endDate: "2026-11-09" };
+const BATCH_2 = { id: "b2", name: "Batch Basalt", startDate: "2026-05-10", endDate: "2026-11-09" };
 
 const dashboard = (over: Record<string, unknown> = {}) => ({
   batchId: "b1",
@@ -38,7 +39,7 @@ describe("MentorToday", () => {
     vi.clearAllMocks();
   });
 
-  it("renders FR-28's figures — N of M, late, absent — for each batch", async () => {
+  it("renders FR-28's figures — N of M, late, absent — for the selected batch", async () => {
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH] });
     getBatchDashboardToday.mockResolvedValue({ data: dashboard(), error: undefined });
@@ -46,8 +47,8 @@ describe("MentorToday", () => {
     render(await MentorToday({ displayName: "Dev Mentor", role: "Admin" }));
 
     // The batch name is the section's accessible name, not a standalone text
-    // node -- it is rendered inside the ribbon's composite label. This is also
-    // the locator Task 10's Playwright suite uses.
+    // node -- it is rendered inside the calendar's composite label. This is
+    // also the locator the Playwright suite uses.
     expect(screen.getByRole("region", { name: "Batch Aurora" })).toBeInTheDocument();
     expect(screen.getByTestId("submitted-count-b1")).toHaveTextContent("8 of 10 submitted");
     expect(screen.getByTestId("late-count-b1")).toHaveTextContent("2 late");
@@ -69,15 +70,91 @@ describe("MentorToday", () => {
     expect(screen.getByTestId("day-label-b1")).toHaveTextContent(/last required day/i);
   });
 
-  it("renders one ribbon per batch, with the cycle label and the required-day count", async () => {
+  it("rings the actual real-world today on the calendar, not the fallback day the dashboard reports (whole-branch review finding I-1)", async () => {
+    // 2026-08-01 is a Saturday. The dashboard falls back to the last
+    // required day (Friday 2026-07-31) for ITS OWN counts/label -- correct,
+    // since there is nothing to submit on a weekend -- but the calendar's
+    // "today" ring must still land on the real today (Saturday), not on the
+    // fallback date the dashboard happens to report.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-01T10:00:00Z"));
+    try {
+      apiClient.mockResolvedValue({});
+      listBatches.mockResolvedValue({ data: [BATCH] });
+      getBatchDashboardToday.mockResolvedValue({
+        data: dashboard({ isFallbackDay: true, date: "2026-07-31" }),
+        error: undefined,
+      });
+
+      render(await MentorToday({ displayName: "Dev Mentor", role: "Admin" }));
+
+      expect(screen.getByRole("gridcell", { name: /2026-08-01.*today/ })).toBeInTheDocument();
+      expect(screen.queryByRole("gridcell", { name: /2026-07-31.*today/ })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renders no batch selector and exactly one calendar for a single-batch mentor", async () => {
     apiClient.mockResolvedValue({});
-    listBatches.mockResolvedValue({ data: [BATCH, { ...BATCH, id: "b2", name: "Batch Basalt" }] });
+    listBatches.mockResolvedValue({ data: [BATCH] });
     getBatchDashboardToday.mockResolvedValue({ data: dashboard(), error: undefined });
 
     render(await MentorToday({ displayName: "Dev Mentor", role: "Admin" }));
 
-    expect(screen.getAllByRole("figure")).toHaveLength(2);
-    expect(screen.getAllByText(/Cycle 3 · Day 17 of 22/).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("figure")).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Batch Aurora" })).not.toBeInTheDocument();
+    expect(getBatchDashboardToday).toHaveBeenCalledTimes(1);
+    expect(getBatchDashboardToday).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { id: "b1" } }),
+    );
+  });
+
+  it("renders chips and exactly one calendar for a multi-batch mentor, defaulting to the first batch (D3)", async () => {
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH, BATCH_2] });
+    getBatchDashboardToday.mockResolvedValue({ data: dashboard(), error: undefined });
+
+    render(await MentorToday({ displayName: "Dev Mentor", role: "Admin" }));
+
+    expect(screen.getAllByRole("figure")).toHaveLength(1);
+    const auroraChip = screen.getByRole("link", { name: "Batch Aurora" });
+    const basaltChip = screen.getByRole("link", { name: "Batch Basalt" });
+    expect(auroraChip).toHaveAttribute("aria-current", "page");
+    expect(basaltChip).not.toHaveAttribute("aria-current");
+    expect(getBatchDashboardToday).toHaveBeenCalledTimes(1);
+    expect(getBatchDashboardToday).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { id: "b1" } }),
+    );
+  });
+
+  it("selects the named batch's calendar when batchId is passed, matching the Cycles page's own fallback", async () => {
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH, BATCH_2] });
+    getBatchDashboardToday.mockResolvedValue({
+      data: dashboard({ batchId: "b2", batchName: "Batch Basalt" }),
+      error: undefined,
+    });
+
+    render(await MentorToday({ displayName: "Dev Mentor", role: "Admin", batchId: "b2" }));
+
+    expect(screen.getByRole("region", { name: "Batch Basalt" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Batch Basalt" })).toHaveAttribute("aria-current", "page");
+    expect(getBatchDashboardToday).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { id: "b2" } }),
+    );
+  });
+
+  it("falls back to the first batch when batchId names a batch the mentor doesn't have", async () => {
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH, BATCH_2] });
+    getBatchDashboardToday.mockResolvedValue({ data: dashboard(), error: undefined });
+
+    render(await MentorToday({ displayName: "Dev Mentor", role: "Admin", batchId: "no-such-batch" }));
+
+    expect(getBatchDashboardToday).toHaveBeenCalledWith(
+      expect.objectContaining({ path: { id: "b1" } }),
+    );
   });
 
   it("says the cycle has not opened when seq is null, rather than printing Cycle null", async () => {
@@ -118,20 +195,18 @@ describe("MentorToday", () => {
     expect(getBatchDashboardToday).not.toHaveBeenCalled();
   });
 
-  it("renders a problem detail per failing batch, without losing the batches that loaded", async () => {
+  it("shows an alert for the selected batch's dashboard failure, without erroring the whole page", async () => {
     apiClient.mockResolvedValue({});
-    listBatches.mockResolvedValue({ data: [BATCH, { ...BATCH, id: "b2", name: "Batch Basalt" }] });
-    getBatchDashboardToday
-      .mockResolvedValueOnce({ data: dashboard(), error: undefined })
-      .mockResolvedValueOnce({
-        data: undefined,
-        error: { type: "about:blank", title: "Internal Server Error", status: 500, detail: "Aggregation failed." },
-      });
+    listBatches.mockResolvedValue({ data: [BATCH] });
+    getBatchDashboardToday.mockResolvedValue({
+      data: undefined,
+      error: { type: "about:blank", title: "Internal Server Error", status: 500, detail: "Aggregation failed." },
+    });
 
     render(await MentorToday({ displayName: "Dev Mentor", role: "Admin" }));
 
-    expect(screen.getByTestId("submitted-count-b1")).toHaveTextContent("8 of 10 submitted");
     expect(screen.getByRole("alert")).toHaveTextContent("Aggregation failed.");
+    expect(screen.queryByRole("figure")).not.toBeInTheDocument();
   });
 
   it("omits the extra-this-cycle line when extraCount is zero", async () => {

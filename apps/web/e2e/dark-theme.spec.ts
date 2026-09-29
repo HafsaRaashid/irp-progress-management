@@ -86,26 +86,19 @@ test.describe("dark theme renders every view", () => {
     await expect(page.getByRole("img", { name: "Bistec Hearts Academy" })).toBeVisible();
   });
 
-  test("the ribbon's marks are still drawn when the canvas is dark", async ({ page }) => {
-    // The `future` mark is a transparent bar with a --line border: the
-    // lowest-contrast element in the system and the likeliest to disappear
-    // against a dark canvas. Its presence is assertable; its visibility is not.
+  test("the calendar's marks are still drawn when the canvas is dark", async ({ page }) => {
+    // The `future` mark is a transparent-background cell with a --line
+    // border: the lowest-contrast element in the system and the likeliest to
+    // disappear against a dark canvas. Its presence is assertable; its
+    // visibility is not. O-17: retargeted from the retired CycleRibbon's
+    // ribbon-bar testid to CycleCalendar's grid semantics.
     await signInAsMentor(page);
     await page.goto("/");
-    await expect(page.getByTestId("ribbon-bar").first()).toBeVisible();
+    await expect(page.getByRole("gridcell", { name: /future/ }).first()).toBeVisible();
   });
 
-  test("the theme key and its swatches survive dark", async ({ page }) => {
-    await signInAsMentor(page);
-    await page.goto("/");
-    const key = page.getByTestId("ribbon-key");
-    await expect(key).toBeVisible();
-    await key.getByText("How to read this").click();
-    // exact: true -- the key's own closing paragraph ("...missed, then late,
-    // then absent, then partly in, then on time.") contains the substring
-    // "on time" too, so the default case-insensitive substring match resolves
-    // to two elements (the <dt>'s swatch label and that trailing <p>) and
-    // trips Playwright's strict mode. The <dt> is the one this test means.
-    await expect(key.getByText("On time", { exact: true })).toBeVisible();
-  });
+  // The mentor-only "How to read this" key (RibbonKey, ADR-0020) has no
+  // calendar equivalent (O-17, ADR-0030) -- documented as a known gap in
+  // docs/design-system.md §7, not silently dropped. There is nothing left
+  // for a dark-mode key test to assert against.
 });

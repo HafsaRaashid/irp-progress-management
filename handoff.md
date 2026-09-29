@@ -35,6 +35,83 @@ Copies of the PRD, the interview record, and the brief also sit directly under t
 
 ## 1. State of play
 
+### 2026-09-29 — Cycle calendar replaces the ribbon (O-17), and the abd-production spec backlog
+
+`docs/superpowers/specs/2026-09-15-cycle-calendar-design.md` was one of five specs authored
+2026-09-15 on a separate `abd-production` branch that never merged to `main`. Of the five, only
+this one is independent of the per-submission-scoring model (built on `feat/plan-9-per-submission-review`,
+then formally withdrawn — see `docs/adr/0027-stakeholder-interview-governs-over-consolidation-task-list.md`);
+the other four (`student-feedback-visibility`, `per-submission-review`, `monthly-score-calculation`,
+`monthly-winner-pdf`) are dead as written and were deliberately not brought over.
+
+**Shipped:** `CycleCalendar` (`apps/web/components/cycle-calendar/`), a month-grid replacing
+`CycleRibbon` at its two live call sites — `mentor-today.tsx` (now single-batch-selected with
+chip-style switching, D3) and `student-today.tsx`. `CycleRibbon` itself is untouched and unimported,
+kept as the revert path (ADR-0030, superseding ADR-0003). Plan:
+`docs/superpowers/plans/2026-09-29-cycle-calendar.md`.
+
+**Two real gaps from the spec's own premises, found during the audit and resolved with the spec
+lead before writing the plan, not built around silently:**
+- The spec's third call site, `my-month/page.tsx`, never carried a ribbon and has no cycle-picker
+  for a student's own dashboard (`getMyDashboard` takes no query params) — dropped from scope.
+- `extraAfter` is Friday-anchored, one flag per weekend, and cannot say which of Saturday/Sunday
+  was worked — the mentor's calendar marks both cells of a flagged weekend identically. The
+  student's calendar does not share this limit: `listMyDays` already returns real per-day status
+  for every calendar date, so its weekend cells resolve independently.
+
+**Two known, deliberate deviations, not regressions:** the mentor-only `RibbonKey` legend
+(ADR-0020) has no calendar equivalent yet — every cell still carries a full accessible name, so
+the accessibility floor holds, but the visible on-screen key is gone pending a design pass. And
+the ribbon's staggered load animation (§10) does not carry over — `CycleCalendar` reuses the same
+160ms rise animation per cell but applies no per-cell delay, so a calendar's marks rise
+simultaneously rather than sweeping left-to-right.
+
+**Verified:** `pnpm --filter @irp/web test -- --run` (283/283 after the fix pass below),
+`pnpm --filter @irp/web typecheck` clean both before and after `AUTH_DEV_BYPASS=false pnpm
+--filter @irp/web build` (12 routes, all `ƒ`). **Not verified this session:** the e2e suite
+(`apps/web/e2e/dashboard-flows.spec.ts`, `dark-theme.spec.ts`) was updated for the new grid
+semantics but not run — it needs a reseeded local database, and the local dev Postgres was left
+in a schema state from an unrelated branch (`refactor/review-flow-rework`) that `prisma migrate
+reset` would fix, but that command is destructive and Prisma's own AI-agent guard correctly
+refused to run it without the developer's explicit confirmation. **Run the full e2e suite and
+the NFR-13 no-scroll check (spec §7, plan Task 8) before merging.**
+
+**A fresh-context whole-branch review (opus) found two Critical and five Important issues before
+any of this shipped, all now fixed except where noted:**
+- **C-1 (fixed):** `dark-theme.spec.ts` still asserted on the retired `ribbon-bar`/`ribbon-key`
+  testids — would have failed CI outright. Retargeted to the calendar's grid semantics; the key
+  test is removed (no calendar-equivalent key exists, per the RibbonKey gap above).
+- **C-2 (fixed):** `student-today.tsx`'s widened `listMyDays` query (above) silently narrowed
+  away a real, previously-fixed boundary bug — on a cycle-boundary day like Monday the 10th, the
+  open submission window still targets the previous cycle's Friday, which a query scoped to only
+  the current cycle's bounds never fetches. Fixed via a new pure helper,
+  `apps/web/lib/history-range.ts` (`historyRangeFor`), and the plan corrected at source.
+- **C-3 (half resolved):** PR #6's CI (all three timezone `verify` legs, which run the full
+  Playwright suite against a freshly-seeded CI database) went green, confirming the
+  `dark-theme.spec.ts`/`dashboard-flows.spec.ts` rewrites for real. The NFR-13 no-scroll check
+  (spec §7) is a manual visual step no CI job performs, and still needs the local Postgres reset
+  above before it can be run.
+- **I-1 (fixed):** the mentor calendar rang the dashboard's *reported* day (which falls back to
+  the last required day on a weekend) as "today", not the real today — a weekend cell existed on
+  the grid and was never the one that actually rang. Now passes the real `toProgrammeDate(new
+  Date())`.
+- **I-2 (fixed):** the grid had no weekday column headers and adjacent-month padding was fully
+  blank rather than dimmed with its day number, contrary to the spec, ADR-0030 and this file's own
+  §7 mock. Both added.
+- **I-3 (documented, not fixed):** a pre-enrolment weekday (post-transfer) reads identically to a
+  genuinely future day — carried over unchanged from the ribbon, and recorded in §7 rather than
+  given an invented, unreviewed visual treatment.
+- **I-4 (fixed):** `CycleCalendar` re-declared `MARK_COLOR` instead of importing it from
+  `cycle-ribbon.tsx`, which explicitly asks callers not to.
+- **I-5 (fixed):** the calendar had no equivalent of the ribbon's remount-on-change key, so a
+  submission landing changed a cell's colour with no animation. Now keyed on every cell's drawn
+  state, same technique as the ribbon.
+
+Eight Minor findings were reviewed and deferred rather than fixed in this pass (per house style, a
+Minor does not enter the fix pass) — the full list is in the SDD ledger,
+`.superpowers/sdd/2026-09-29-cycle-calendar/progress.md`, kept (not deleted) alongside this branch
+until C-3 is resolved and the branch is actually ready to merge.
+
 ### 2026-08-18 — PR #17's red CI, and the web dev server moves to 3100
 
 Two things, both outside any plan. **Both merged the same day — #17 then #18 — and `main` is now at
