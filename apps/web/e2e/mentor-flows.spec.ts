@@ -107,7 +107,7 @@ test.describe("mentor flows (dev-admin-1)", () => {
     expect(extraText).toMatch(/^\+\d+$/);
   });
 
-  test("roster -> review -> record -> transition -> lock, over the mixed persona's first Submitted day", async ({
+  test("roster -> review -> record -> transition -> lock, over the mixed persona's first In Review day", async ({
     page,
   }) => {
     await signInAsMentor(page);
@@ -134,10 +134,34 @@ test.describe("mentor flows (dev-admin-1)", () => {
     const dates = await Promise.all(
       (await dateInputs.all()).map((l) => l.inputValue()),
     );
-    const openDate = dates.find((d) => canSubmitFor(civilDate(d), now)) ?? "";
+    const openCandidates = dates.filter((d) => canSubmitFor(civilDate(d), now));
     const closedDate = dates.find((d) => !canSubmitFor(civilDate(d), now)) ?? "";
-    expect(openDate, "no still-open day on screen").not.toBe("");
+    expect(openCandidates.length, "no still-open day on screen").toBeGreaterThan(0);
     expect(closedDate, "no closed day on screen to finish").not.toBe("");
+
+    // The mixed persona's seed pattern skips roughly one working day in six
+    // (run-seed.ts: dayIndex % 6 === 3) -- a skipped day has no entry and so
+    // no report at all (ADR-0028: a report is born only at student
+    // submission), and it shows no "In review" text no matter how the
+    // mentor's own record is saved. Pick an open day that ALREADY carries a
+    // report before touching anything, so the assertion below is about the
+    // save NOT re-locking an in-review day, not about whether a report
+    // exists in the first place -- which date this lands on shifts with
+    // "today", so it cannot be selected by position.
+    let openDate = "";
+    for (const candidate of openCandidates) {
+      const alreadyInReview = await dayPanelByHiddenDate(page, candidate)
+        .getByText("In review")
+        .count();
+      if (alreadyInReview > 0) {
+        openDate = candidate;
+        break;
+      }
+    }
+    expect(
+      openDate,
+      "no still-open day with an existing report to test the non-locking save against",
+    ).not.toBe("");
 
     // ── half one: a day still inside the window saves WITHOUT finishing ──
     const openPanel = dayPanelByHiddenDate(page, openDate);

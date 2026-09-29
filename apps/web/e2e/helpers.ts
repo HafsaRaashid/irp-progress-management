@@ -82,7 +82,7 @@ export function dayPanelByLabel(page: Page, dateLabel: string): Locator {
 /**
  * The day Panel located via DayRecordForm's hidden `date` input instead of
  * the label text -- precise and collision-proof while the form is mounted
- * (Submitted/InReview). It stops resolving the instant a day is marked
+ * (In Review). It stops resolving the instant a day is marked
  * Evaluated, since FR-20 unmounts DayRecordForm entirely at that point; use
  * dayPanelByLabel (captured from panelDateLabel below, before that happens)
  * for any assertion that must survive past the lock.
