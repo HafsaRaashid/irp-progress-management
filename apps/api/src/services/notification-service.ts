@@ -59,8 +59,7 @@ export interface NotificationServiceDeps {
   logger: NotificationLogger;
 }
 
-const TRANSITION_LABEL: Record<"InReview" | "Evaluated", string> = {
-  InReview: "Moved to In Review",
+const TRANSITION_LABEL: Record<"Evaluated", string> = {
   Evaluated: "Moved to Evaluated",
 };
 
