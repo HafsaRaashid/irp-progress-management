@@ -1,8 +1,9 @@
+import Link from "next/link";
 import { listBatches, getBatchDashboardToday, type Role } from "@irp/client";
+import { cycleContaining, toProgrammeDate } from "@irp/core";
 import { apiClient } from "@/lib/api-client";
-import { CycleRibbon } from "@/components/cycle-ribbon/cycle-ribbon";
-import { RibbonKey } from "@/components/cycle-ribbon/ribbon-key";
-import { toBatchRibbonDays } from "@/lib/ribbon";
+import { CycleCalendar } from "@/components/cycle-calendar/cycle-calendar";
+import { toBatchCalendarDays } from "@/lib/ribbon";
 import { PageTitle } from "@/components/ui/page-title";
 import { Panel } from "@/components/ui/panel";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -11,16 +12,21 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { formatCivilDateLabel } from "./format-civil-date";
 
 /**
- * FR-28, must-ship (SC-4). The warm zone: one cycle ribbon per batch, with
- * "N of M submitted" and the late/absent/missed counts beside it — all of it
- * above the fold at 1280x800 (docs/design-system.md §8.1). The roster is a
- * separate page and is allowed to scroll; these figures are not.
- *
- * One dashboard call per batch, issued concurrently. A batch whose call fails
- * renders its own alert and the others still render — a single 500 must not
- * blank the mentor's home screen.
+ * FR-28, must-ship (SC-4). One shared calendar for a selected batch, with a
+ * batch-selector chip row when the mentor has more than one (D3, O-17) --
+ * replacing the earlier one-ribbon-per-batch stack. "N of M submitted" and
+ * the late/absent/missed counts sit beside it, all of it above the fold at
+ * 1280x800 (docs/design-system.md §8.1).
  */
-export async function MentorToday({ displayName, role }: { displayName: string; role: Role }) {
+export async function MentorToday({
+  displayName,
+  role,
+  batchId,
+}: {
+  displayName: string;
+  role: Role;
+  batchId?: string;
+}) {
   const client = await apiClient();
   const { data: batches, error: batchesError } = await listBatches({ client });
 
@@ -59,89 +65,84 @@ export async function MentorToday({ displayName, role }: { displayName: string; 
     );
   }
 
-  const dashboards = await Promise.all(
-    batches.map(async (b) => ({
-      batch: b,
-      result: await getBatchDashboardToday({ client, path: { id: b.id } }),
-    })),
-  );
+  // Same fallback the Cycles page uses: the named batch if it exists, else
+  // the first by listBatches' own order -- never an empty selection.
+  const selected = batches.find((b) => b.id === batchId) ?? batches[0]!;
+  const { data: d, error } = await getBatchDashboardToday({ client, path: { id: selected.id } });
+
+  const label =
+    d?.cycle.seq === null
+      ? `${selected.name} · first evaluated cycle opens ${formatCivilDateLabel(d.cycle.startDate)}`
+      : d !== undefined
+        ? `${selected.name} · Cycle ${String(d.cycle.seq)} · Day ${String(d.dayNumber)} of ${String(d.cycle.requiredDayCount)}`
+        : selected.name;
 
   return (
     <div>
       <PageTitle>Today</PageTitle>
       {identity}
 
-      <div className="flex flex-col gap-6">
-        {dashboards.map(({ batch, result }) => {
-          if (result.data === undefined) {
-            return (
-              <Panel key={batch.id} title={batch.name}>
-                <p role="alert" style={{ color: "var(--st-missed)" }}>
-                  {result.error?.detail ?? result.error?.title ?? "This batch's figures could not be loaded."}
-                </p>
-              </Panel>
-            );
-          }
+      {batches.length > 1 && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {batches.map((b) => (
+            <Link
+              key={b.id}
+              href={{ pathname: "/", query: { batchId: b.id } }}
+              aria-current={b.id === selected.id ? "page" : undefined}
+              className="chip"
+            >
+              {b.name}
+            </Link>
+          ))}
+        </div>
+      )}
 
-          const d = result.data;
-          const label =
-            d.cycle.seq === null
-              ? `${batch.name} · first evaluated cycle opens ${formatCivilDateLabel(d.cycle.startDate)}`
-              : `${batch.name} · Cycle ${String(d.cycle.seq)} · Day ${String(d.dayNumber)} of ${String(d.cycle.requiredDayCount)}`;
+      {error !== undefined || d === undefined ? (
+        <Panel title={selected.name}>
+          <p role="alert" style={{ color: "var(--st-missed)" }}>
+            {error?.detail ?? error?.title ?? "This batch's figures could not be loaded."}
+          </p>
+        </Panel>
+      ) : (
+        <section aria-label={selected.name}>
+          {/* ASSUMPTION: O-17 -- the calendar replaces the ribbon; no FR asks for it. */}
+          <CycleCalendar
+            weeks={toBatchCalendarDays(
+              cycleContaining(toProgrammeDate(new Date())),
+              [...d.days],
+              [...d.extraAfter],
+              d.date,
+            )}
+            label={label}
+          />
 
-          return (
-            <section key={batch.id} aria-label={batch.name}>
-              <CycleRibbon
-                days={toBatchRibbonDays([...d.days], d.date)}
-                extraAfter={[...d.extraAfter]}
-                label={label}
-              />
+          <div className="mt-3">
+            <CountsRow
+              items={[
+                {
+                  tone: "ink",
+                  strong: true,
+                  text: `${String(d.counts.submitted)} of ${String(d.counts.enrolled)} submitted`,
+                  testId: `submitted-count-${selected.id}`,
+                },
+                { tone: "late", text: `${String(d.counts.late)} late`, testId: `late-count-${selected.id}` },
+                { tone: "absent", text: `${String(d.counts.absent)} absent`, testId: `absent-count-${selected.id}` },
+                { tone: "missed", text: `${String(d.counts.missed)} missed`, testId: `missed-count-${selected.id}` },
+                ...(d.extraCount > 0
+                  ? [{ tone: "muted" as const, text: `+${String(d.extraCount)} extra this cycle` }]
+                  : []),
+              ]}
+            />
+          </div>
 
-              <div className="mt-3">
-                <CountsRow
-                  items={[
-                    {
-                      tone: "ink",
-                      strong: true,
-                      text: `${String(d.counts.submitted)} of ${String(d.counts.enrolled)} submitted`,
-                      testId: `submitted-count-${batch.id}`,
-                    },
-                    { tone: "late", text: `${String(d.counts.late)} late`, testId: `late-count-${batch.id}` },
-                    { tone: "absent", text: `${String(d.counts.absent)} absent`, testId: `absent-count-${batch.id}` },
-                    { tone: "missed", text: `${String(d.counts.missed)} missed`, testId: `missed-count-${batch.id}` },
-                    ...(d.extraCount > 0
-                      ? [{ tone: "muted" as const, text: `+${String(d.extraCount)} extra this cycle` }]
-                      : []),
-                  ]}
-                />
-              </div>
-
-              {/*
-                `data-date` carries the ISO form of the day these figures
-                describe. The visible label is prose ("Friday 31 July"), which
-                a test cannot turn back into a date, and on a weekend this day
-                is NOT today — so an e2e check that wants to cross-read the
-                Roster for the same day has no other way to address it.
-              */}
-              <div className="mt-1" data-testid={`day-label-${batch.id}`} data-date={d.date}>
-                <SectionLabel>
-                  {formatCivilDateLabel(d.date)}
-                  {d.isFallbackDay && " · the last required day, not today"}
-                </SectionLabel>
-              </div>
-            </section>
-          );
-        })}
-      </div>
-
-      {/*
-        Once, after every batch section — not inside CycleRibbon, which renders
-        per batch and would repeat the key for each. Collapsed, so §8.1's
-        above-the-fold budget still belongs to the ribbons and their figures.
-      */}
-      <div className="mt-6">
-        <RibbonKey />
-      </div>
+          <div className="mt-1" data-testid={`day-label-${selected.id}`} data-date={d.date}>
+            <SectionLabel>
+              {formatCivilDateLabel(d.date)}
+              {d.isFallbackDay && " · the last required day, not today"}
+            </SectionLabel>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

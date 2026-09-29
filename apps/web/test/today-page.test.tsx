@@ -59,19 +59,30 @@ describe("TodayPage role branches", () => {
   it("delegates an Admin caller to MentorToday, with the signed-in user's identity", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
 
-    const element = await TodayPage();
+    const element = await TodayPage({ searchParams: Promise.resolve({}) });
 
     expect(element.type).toBe(MentorToday);
     expect(element.props as ComponentProps<typeof MentorToday>).toEqual({
       displayName: "Dev Mentor",
       role: "Admin",
+      batchId: undefined,
     });
+  });
+
+  it("passes a batchId query param through to MentorToday unchanged", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+
+    const element = await TodayPage({ searchParams: Promise.resolve({ batchId: "b2" }) });
+
+    expect(element.props as ComponentProps<typeof MentorToday>).toEqual(
+      expect.objectContaining({ batchId: "b2" }),
+    );
   });
 
   it("delegates a Student caller to StudentToday, with the signed-in user's identity", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(STUDENT_USER);
 
-    const element = await TodayPage();
+    const element = await TodayPage({ searchParams: Promise.resolve({}) });
 
     expect(element.type).toBe(StudentToday);
     expect(element.props as ComponentProps<typeof StudentToday>).toEqual({
@@ -93,7 +104,7 @@ describe("TodayPage role branches", () => {
     listMyDays.mockResolvedValue({ data: [], error: undefined });
     getMyDashboard.mockResolvedValue({ data: undefined, error: undefined });
 
-    const element = await TodayPage();
+    const element = await TodayPage({ searchParams: Promise.resolve({}) });
     render(await StudentToday(element.props as ComponentProps<typeof StudentToday>));
 
     expect(screen.getByTestId("user-name")).toHaveTextContent("Dev Student");
@@ -124,7 +135,7 @@ describe("TodayPage role branches", () => {
       error: undefined,
     });
 
-    const element = await TodayPage();
+    const element = await TodayPage({ searchParams: Promise.resolve({}) });
     render(await StudentToday(element.props as ComponentProps<typeof StudentToday>));
 
     expect(screen.getByRole("figure")).toBeInTheDocument();
@@ -146,7 +157,7 @@ describe("TodayPage role branches", () => {
       error: { title: "Internal Server Error", detail: "Your month could not be loaded." },
     });
 
-    const element = await TodayPage();
+    const element = await TodayPage({ searchParams: Promise.resolve({}) });
     render(await StudentToday(element.props as ComponentProps<typeof StudentToday>));
 
     expect(screen.getByRole("alert")).toHaveTextContent("Your month could not be loaded.");
