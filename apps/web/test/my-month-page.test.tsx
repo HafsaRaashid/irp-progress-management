@@ -114,7 +114,7 @@ describe("MyMonthPage", () => {
           }],
         },
         {
-          date: "2026-08-03", status: "late", reportStatus: "Submitted", reportId: "r2",
+          date: "2026-08-03", status: "late", reportStatus: "InReview", reportId: "r2",
           absenceReason: null,
           entries: [{
             id: "e2", entryDate: "2026-08-03", body: "Newer entry.",
@@ -130,7 +130,7 @@ describe("MyMonthPage", () => {
     const bodies = screen.getAllByTestId("day-entry-body").map((n) => n.textContent);
     expect(bodies).toEqual(["Newer entry.", "Older entry."]);
     expect(screen.getByText("Late")).toBeInTheDocument();
-    expect(screen.getByText(/· Evaluated/)).toBeInTheDocument();
+    expect(screen.getByText(/· Saved/)).toBeInTheDocument();
   });
 
   it("drops future days and quiet weekends from the history, but keeps a settled day even with no entry (Finding 4)", async () => {

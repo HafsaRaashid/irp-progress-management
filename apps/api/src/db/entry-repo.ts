@@ -16,8 +16,7 @@ import { lockStudentDay } from "./day-lock.js";
 // routes/me-days.ts also imports -- reaching from here into routes/ would
 // invert that layering even though no runtime cycle exists yet. A three-line
 // map is cheaper than depending on that staying true.
-const TRANSITION_STATUS_TO_API: Record<DailyReportStatus, "Submitted" | "InReview" | "Evaluated"> = {
-  SUBMITTED: "Submitted",
+const TRANSITION_STATUS_TO_API: Record<DailyReportStatus, "InReview" | "Evaluated"> = {
   IN_REVIEW: "InReview",
   EVALUATED: "Evaluated",
 };
@@ -53,9 +52,15 @@ export interface EntryRepo {
   listEntriesForStudents(studentIds: string[], from: CivilDate, to: CivilDate): Promise<EntryRecord[]>;
   /** Batched sibling of listReports (ADR-0018). */
   listReportsForStudents(studentIds: string[], from: CivilDate, to: CivilDate): Promise<DailyReportRecord[]>;
+  /**
+   * The one forward transition left: IN_REVIEW -> EVALUATED (FR-18, FR-20).
+   * `to` is a single-member union rather than a boolean-ish flag so the call
+   * site still reads as a destination, and so adding a state later is a type
+   * error at every caller rather than a silent behaviour change.
+   */
   transition(
     reportId: string,
-    to: "IN_REVIEW" | "EVALUATED",
+    to: "EVALUATED",
     mentorId: string,
     now: Date,
   ): Promise<DailyReportRecord>;
@@ -105,10 +110,21 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
         // Upsert, not find-then-create: two concurrent first entries for the
         // same day would both see no report and the loser would throw P2002.
         // Prisma compiles this shape to a native INSERT ... ON CONFLICT.
+        // Born IN_REVIEW, with inReviewAt stamped at the same instant: the
+        // submission IS the thing under review, so there is no earlier state
+        // for a mentor to move it out of (interview Q14, ASSUMPTION: O-19).
+        // `update: {}` still -- a second entry on the same day must not reset
+        // inReviewAt, and must not drag an already-EVALUATED day backwards
+        // (it cannot reach here anyway; the lock check above throws first).
         await tx.dailyReport.upsert({
           where: { studentId_reportDate: { studentId: input.studentId, reportDate: dbDate } },
           update: {},
-          create: { studentId: input.studentId, reportDate: dbDate },
+          create: {
+            studentId: input.studentId,
+            reportDate: dbDate,
+            status: "IN_REVIEW",
+            inReviewAt: input.submittedAt,
+          },
         });
         const entry = await tx.entry.create({
           data: {
@@ -174,14 +190,12 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
     // concurrency guard: two mentors racing the same step both attempt the
     // same conditional update, and exactly one sees count === 1.
     async transition(reportId, to, mentorId, now) {
-      const expected = to === "IN_REVIEW" ? "SUBMITTED" : "IN_REVIEW";
-      const data =
-        to === "IN_REVIEW"
-          ? { status: to, reviewedById: mentorId, inReviewAt: now }
-          : { status: to, reviewedById: mentorId, evaluatedAt: now };
+      // One transition exists now: IN_REVIEW -> EVALUATED. `to` is typed to
+      // that single value, so there is no branch left to take -- the second
+      // step went away with SUBMITTED (ASSUMPTION: O-19).
       const { count } = await prisma.dailyReport.updateMany({
-        where: { id: reportId, status: expected },
-        data,
+        where: { id: reportId, status: "IN_REVIEW" },
+        data: { status: to, reviewedById: mentorId, evaluatedAt: now },
       });
       if (count === 0) {
         const current = await prisma.dailyReport.findUnique({ where: { id: reportId } });

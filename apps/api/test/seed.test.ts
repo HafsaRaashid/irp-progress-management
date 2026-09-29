@@ -140,9 +140,11 @@ describe.skipIf(!dbUrl)("runSeed", () => {
     })).toBe(0);
   });
 
-  it("review statuses span all three states, and cycles exist for both batches", async () => {
+  it("review statuses span both states, and cycles exist for both batches", async () => {
     const statuses = await prisma.dailyReport.groupBy({ by: ["status"] });
-    expect(statuses.map((s) => s.status).sort()).toEqual(["EVALUATED", "IN_REVIEW", "SUBMITTED"]);
+    // Two states, not three: a report is born IN_REVIEW (ASSUMPTION: O-19),
+    // so the seed's older sweep to EVALUATED is the only status write left.
+    expect(statuses.map((s) => s.status).sort()).toEqual(["EVALUATED", "IN_REVIEW"]);
     const batchA = await prisma.batch.findUniqueOrThrow({ where: { name: SEED_BATCH_NAMES.A } });
     expect(await prisma.cycle.count({ where: { batchId: batchA.id } })).toBeGreaterThanOrEqual(3);
     expect(await prisma.evaluation.count()).toBe(0); // D2/D6: no fake evaluations

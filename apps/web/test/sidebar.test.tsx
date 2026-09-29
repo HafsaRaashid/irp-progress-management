@@ -63,13 +63,13 @@ describe("Sidebar Settings entry", () => {
     expect(wrapper).toHaveClass("mt-auto", "border-t");
   });
 
-  it("keeps exactly five primary destinations for a mentor, Settings aside", () => {
+  it("keeps exactly four primary destinations for a mentor, Settings aside", () => {
     render(<Sidebar role="Admin" />);
     const primary = screen
       .getAllByRole("link")
       .map((a) => a.textContent?.trim())
       .filter((label) => label !== "Settings");
-    expect(primary).toHaveLength(5);
+    expect(primary).toHaveLength(4);
   });
 
   it("keeps exactly two primary destinations for a student, Settings aside", () => {
@@ -83,15 +83,15 @@ describe("Sidebar Settings entry", () => {
 
   it("renders an icon for every destination", () => {
     const { container } = render(<Sidebar role="Admin" />);
-    // Five primary destinations + Settings = six rows, six icons.
-    expect(container.querySelectorAll("nav svg")).toHaveLength(6);
+    // Four primary destinations + Settings = five rows, five icons.
+    expect(container.querySelectorAll("nav svg")).toHaveLength(5);
   });
 
   it("keeps the accessible name as the text label alone — icons are decorative", () => {
     render(<Sidebar role="Admin" />);
     // If an icon ever contributed to the name, this exact-match query breaks.
     // That is the assertion that proves the icons are aria-hidden.
-    for (const label of ["Today", "Roster", "Review", "Cycles", "Students", "Settings"]) {
+    for (const label of ["Today", "Roster", "Cycles", "Students", "Settings"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });

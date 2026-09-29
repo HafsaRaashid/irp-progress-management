@@ -16,8 +16,10 @@ vi.mock("@/lib/api-client", () => ({ getCurrentUserOrRedirect, apiClient }));
 // mocking roster-page.test.tsx uses) calls transitionDailyReport and
 // upsertDayRecord; page.tsx itself calls listStudentDays, listUsers, and
 // listDayRecords. All five are mocked here so the whole tree -- page,
-// TransitionControl, DayRecordForm, and the server actions underneath them --
-// runs without a real client or network access.
+// DayRecordForm and the server actions underneath it --
+// runs without a real client or network access. transitionDailyReport is
+// still here because saveDayRecord calls it to finish a day -- the separate
+// "Mark evaluated" control it used to serve is gone.
 const { listStudentDays, listUsers, listDayRecords, transitionDailyReport, upsertDayRecord } = vi.hoisted(() => ({
   listStudentDays: vi.fn(),
   listUsers: vi.fn(),
@@ -75,6 +77,14 @@ function params(studentId = "s1") {
   return Promise.resolve({ studentId });
 }
 
+/**
+ * The page reads `?show=` to pick its filter. Default (no argument) is the
+ * "Needs review" view, which is what a bare /review/<id> renders.
+ */
+function searchParams(show?: string) {
+  return Promise.resolve(show === undefined ? {} : { show });
+}
+
 // Every test below that renders past the Admin gate needs listDayRecords to
 // resolve to *something* -- page.tsx withholds DayRecordForm entirely when
 // it errors (see page.tsx's recordsByDate comment), so a test not about
@@ -89,7 +99,7 @@ describe("StudentReviewPage", () => {
   it("redirects a Student caller to / rather than rendering the review view", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(STUDENT_USER);
 
-    await expect(StudentReviewPage({ params: params() })).rejects.toBe(REDIRECT_SENTINEL);
+    await expect(StudentReviewPage({ params: params(), searchParams: searchParams() })).rejects.toBe(REDIRECT_SENTINEL);
 
     expect(redirect).toHaveBeenCalledWith("/");
     expect(listStudentDays).not.toHaveBeenCalled();
@@ -111,7 +121,7 @@ describe("StudentReviewPage", () => {
       },
     });
 
-    render(await StudentReviewPage({ params: params("unknown") }));
+    render(await StudentReviewPage({ params: params("unknown"), searchParams: searchParams() }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("The student does not exist.");
   });
@@ -130,7 +140,7 @@ describe("StudentReviewPage", () => {
       error: undefined,
     });
 
-    render(await StudentReviewPage({ params: params() }));
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
 
     const headings = screen.getAllByText(/July/).map((el) => el.textContent);
     // formatCivilDateLabel renders e.g. "Thursday, 30 July" -- the exact
@@ -142,7 +152,145 @@ describe("StudentReviewPage", () => {
     expect(twentyEighthIndex).toBeGreaterThan(thirtiethIndex);
   });
 
-  it("locks an Evaluated day -- no transition button, no record form (FR-20)", async () => {
+  // The three-day fixture every filter case below shares: two finished days
+  // straddling one still-open day, oldest-first as listStudentDays really
+  // returns it, so a filter that merely happened to follow date order would
+  // not pass. All three are WEEKDAYS (Mon 27, Tue 28, Wed 29 July) -- an
+  // empty weekend day is deliberately dropped from this page, so using one
+  // here would make these pass or fail for a reason unrelated to filtering.
+  function threeDaysMixed() {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
+    noStoredRecords();
+    listStudentDays.mockResolvedValue({
+      data: [
+        { date: "2026-07-27", status: "onTime", reportStatus: "Evaluated", reportId: "r-old", absenceReason: null, entries: [] },
+        { date: "2026-07-28", status: "onTime", reportStatus: "InReview", reportId: "r-mid", absenceReason: null, entries: [] },
+        { date: "2026-07-29", status: "onTime", reportStatus: "Evaluated", reportId: "r-new", absenceReason: null, entries: [] },
+      ],
+      error: undefined,
+    });
+  }
+
+  it("defaults to the In review filter, hiding finished days entirely", async () => {
+    threeDaysMixed();
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
+
+    expect(screen.getByText("Tuesday 28 July")).toBeInTheDocument();
+    // Absent, not merely ordered after. That is the point of the filter: a
+    // mentor never scrolls past finished work to reach the rest.
+    expect(screen.queryByText("Monday 27 July")).not.toBeInTheDocument();
+    expect(screen.queryByText("Wednesday 29 July")).not.toBeInTheDocument();
+  });
+
+  it("shows only finished days under ?show=saved", async () => {
+    threeDaysMixed();
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams("saved") }));
+
+    expect(screen.getByText("Monday 27 July")).toBeInTheDocument();
+    expect(screen.getByText("Wednesday 29 July")).toBeInTheDocument();
+    expect(screen.queryByText("Tuesday 28 July")).not.toBeInTheDocument();
+  });
+
+  it("shows every day, newest first, under ?show=all", async () => {
+    threeDaysMixed();
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams("all") }));
+
+    const headings = screen.getAllByText(/July/).map((el) => el.textContent);
+    expect(headings).toEqual(["Wednesday 29 July", "Tuesday 28 July", "Monday 27 July"]);
+  });
+
+  it("falls back to the In review filter for an unrecognised ?show=", async () => {
+    threeDaysMixed();
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams("nonsense") }));
+
+    expect(screen.getByText("Tuesday 28 July")).toBeInTheDocument();
+    expect(screen.queryByText("Wednesday 29 July")).not.toBeInTheDocument();
+  });
+
+  it("renders the day titles as real headings so the list can be skimmed", async () => {
+    threeDaysMixed();
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams("all") }));
+
+    // Styled text is not a heading: with 15+ day panels the page's whole
+    // structure is these titles, and a screen-reader user needs to jump
+    // between them. They were <div> until this was asserted.
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
+      "Wednesday 29 July",
+      "Tuesday 28 July",
+      "Monday 27 July",
+    ]);
+  });
+
+  it("counts every group, not just the visible one", async () => {
+    threeDaysMixed();
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
+
+    // Counts live on their own line rather than inside the chips, and must
+    // be right for groups that are off screen -- a "1 saved" that only
+    // became correct once you clicked Saved would defeat the point.
+    expect(screen.getByText(/in review/)).toHaveTextContent("1 in review · 2 saved · 3 days this cycle");
+    expect(screen.getByRole("link", { name: "In review" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Saved" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("drops an empty weekend day, and keeps one that holds an Extra entry", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
+    noStoredRecords();
+    listStudentDays.mockResolvedValue({
+      data: [
+        // Sat 1 Aug with work on it, Sun 2 Aug with none. A weekend carries
+        // no obligation (FR-12) and never enters a denominator (FR-33), so
+        // an empty one is not "missing" -- rendering it as "No entry
+        // recorded." invented work that does not exist.
+        {
+          date: "2026-08-01", status: "extra", reportStatus: "InReview", reportId: "r-sat",
+          absenceReason: null,
+          entries: [
+            { id: "e-sat", entryDate: "2026-08-01", body: "Extra weekend work.", submittedAt: "2026-08-01T04:00:00.000Z", isLate: false, isExtra: true },
+          ],
+        },
+        { date: "2026-08-02", status: "none", reportStatus: null, reportId: null, absenceReason: null, entries: [] },
+      ],
+      error: undefined,
+    });
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams("all") }));
+
+    expect(screen.getByText("Saturday 1 August")).toBeInTheDocument();
+    expect(screen.queryByText("Sunday 2 August")).not.toBeInTheDocument();
+    // The Saturday still gets no record form -- FR-19 has nothing to attend
+    // on an optional day, and the API 400s such a write.
+    expect(screen.queryByRole("button", { name: /^Save/ })).not.toBeInTheDocument();
+  });
+
+  it("tells the mentor the queue is empty rather than rendering a blank page", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
+    noStoredRecords();
+    listStudentDays.mockResolvedValue({
+      data: [
+        { date: "2026-07-28", status: "onTime", reportStatus: "Evaluated", reportId: "r-1", absenceReason: null, entries: [] },
+      ],
+      error: undefined,
+    });
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
+
+    expect(screen.getByText("Nothing left to review for this cycle.")).toBeInTheDocument();
+  });
+
+  it("locks a finished day -- no record form at all (FR-20)", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
@@ -163,15 +311,18 @@ describe("StudentReviewPage", () => {
       error: undefined,
     });
 
-    render(await StudentReviewPage({ params: params() }));
+    // ?show=saved, not the default: a locked day is exactly what the
+    // default view hides, so asserting the lock there would pass for the
+    // wrong reason -- no buttons because no day.
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams("saved") }));
 
-    expect(screen.getByText(/· Evaluated/)).toBeInTheDocument();
+    expect(screen.getByText(/· Saved/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark evaluated" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start review" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Mark evaluated" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save record" })).not.toBeInTheDocument();
   });
 
-  it("shows a Start review control for a Submitted day", async () => {
+  function oneDay(date: string, reportStatus: "InReview" | "Evaluated" = "InReview") {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
@@ -179,95 +330,69 @@ describe("StudentReviewPage", () => {
     listStudentDays.mockResolvedValue({
       data: [
         {
-          date: "2026-07-28",
-          status: "onTime",
-          reportStatus: "Submitted",
-          reportId: "r-c",
-          absenceReason: null,
+          date, status: "onTime", reportStatus, reportId: "r-c", absenceReason: null,
           entries: [
-            { id: "e1", entryDate: "2026-07-28", body: "Wrote the review page.", submittedAt: "2026-07-28T04:00:00.000Z", isLate: false, isExtra: false },
+            { id: "e1", entryDate: date, body: "Wrote the review page.", submittedAt: `${date}T04:00:00.000Z`, isLate: false, isExtra: false },
           ],
         },
       ],
       error: undefined,
     });
+  }
 
-    render(await StudentReviewPage({ params: params() }));
+  it("finishes the day on save once the student can no longer submit to it", async () => {
+    // Long past, so canSubmitFor is false and finishing the day is safe.
+    oneDay("2026-07-28");
 
-    expect(screen.getByRole("button", { name: "Start review" })).toBeInTheDocument();
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
+
+    expect(screen.getByRole("button", { name: "Save record" })).toBeInTheDocument();
+    // The separate step is gone in both directions -- neither the old
+    // "Start review" nor the old "Mark evaluated" exists any more.
     expect(screen.queryByRole("button", { name: "Mark evaluated" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start review" })).not.toBeInTheDocument();
   });
 
-  it("hides the record form on a weekend day even when it holds an entry", async () => {
-    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
-    apiClient.mockResolvedValue({});
-    listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
-    noStoredRecords();
-    listStudentDays.mockResolvedValue({
-      data: [
-        {
-          // Saturday -- see weekday.ts's isWeekday. Optional days carry no
-          // attendance/tasks record at all (the API 400s), so the form must
-          // never render here even though the day is otherwise renderable.
-          date: "2026-08-01",
-          status: "extra",
-          reportStatus: "Submitted",
-          reportId: "r-x",
-          absenceReason: null,
-          entries: [
-            { id: "e2", entryDate: "2026-08-01", body: "Extra weekend work.", submittedAt: "2026-08-01T04:00:00.000Z", isLate: false, isExtra: true },
-          ],
-        },
-      ],
-      error: undefined,
-    });
+  it("does not finish a day still inside the submission window (FR-20 safety)", async () => {
+    // Today. Finishing locks the day against the student (FR-20), and a
+    // lock cannot be undone -- so today is never offered as finishable, or
+    // a mentor recording morning attendance would take the rest of the
+    // student's day away from them.
+    const today = new Date().toISOString().slice(0, 10);
+    oneDay(today);
+    upsertDayRecord.mockResolvedValue({ data: {}, error: undefined });
 
-    render(await StudentReviewPage({ params: params() }));
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
 
-    expect(screen.queryByRole("button", { name: "Save record" })).not.toBeInTheDocument();
-    // The transition control is independent of weekday -- a report exists
-    // whenever an entry exists, weekend or not.
-    expect(screen.getByRole("button", { name: "Start review" })).toBeInTheDocument();
+    // Same label as every other row -- what differs is what the save DOES,
+    // not what the button is called. The proof it does NOT finish the day
+    // is that no transition is attempted at all.
+    fireEvent.click(screen.getByRole("button", { name: "Save record" }));
+    // "Record saved.", not "Saved — day finished." -- and no transition
+    // attempted at all, which is the real assertion here.
+    await screen.findByText("Record saved.");
+    expect(transitionDailyReport).not.toHaveBeenCalled();
   });
 
-  it("surfaces the transition action's rejection as role=alert -- the discarded-error shape Task 12's review rejected", async () => {
-    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
-    apiClient.mockResolvedValue({});
-    listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
-    noStoredRecords();
-    listStudentDays.mockResolvedValue({
-      data: [
-        {
-          date: "2026-07-28",
-          status: "onTime",
-          reportStatus: "Submitted",
-          reportId: "r-c",
-          absenceReason: null,
-          entries: [],
-        },
-      ],
-      error: undefined,
-    });
-    transitionDailyReport.mockResolvedValueOnce({
+  it("reports a day whose record saved but whose finish was rejected", async () => {
+    oneDay("2026-07-28");
+    upsertDayRecord.mockResolvedValue({ data: {}, error: undefined });
+    transitionDailyReport.mockResolvedValue({
       data: undefined,
-      error: {
-        type: "about:blank",
-        title: "Conflict",
-        status: 409,
-        detail: "The report is no longer Submitted.",
-        traceId: "t2",
-      },
+      error: { detail: "The report is no longer InReview." },
     });
 
-    render(await StudentReviewPage({ params: params() }));
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
+    fireEvent.click(screen.getByRole("button", { name: "Save record" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Start review" }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("The report is no longer Submitted.");
+    // The two writes are separate calls, so the mentor must be told when
+    // the second fails -- otherwise the record silently saved and the day
+    // silently stayed open, which reads as "nothing happened".
+    expect(await screen.findByRole("alert")).toHaveTextContent("The report is no longer InReview.");
     expect(transitionDailyReport).toHaveBeenCalledWith({
       client: {},
       path: { id: "r-c" },
-      body: { to: "InReview" },
+      body: { to: "Evaluated" },
     });
   });
 
@@ -300,7 +425,7 @@ describe("StudentReviewPage", () => {
       },
     });
 
-    render(await StudentReviewPage({ params: params() }));
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
 
     const panel = screen.getByLabelText("Mentor note for 2026-07-28").closest("form");
     expect(panel).not.toBeNull();
@@ -334,7 +459,7 @@ describe("StudentReviewPage", () => {
       error: undefined,
     });
 
-    render(await StudentReviewPage({ params: params() }));
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
 
     expect(screen.getByLabelText("Attended")).toBeChecked();
     expect(screen.getByLabelText("Tasks completed")).not.toBeChecked();
@@ -376,14 +501,15 @@ describe("StudentReviewPage", () => {
       error: undefined,
     });
 
-    render(await StudentReviewPage({ params: params() }));
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
 
     fireEvent.change(screen.getByLabelText("Mentor note for 2026-07-28"), {
       target: { value: "Followed up by evening." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save record" }));
 
-    await screen.findByText("Record saved.");
+    // Past-dated fixture, so this save also finished the day.
+    await screen.findByText("Saved — day finished.");
     expect(upsertDayRecord).toHaveBeenCalledWith({
       client: {},
       path: { id: "s1", date: "2026-07-28" },
@@ -407,12 +533,12 @@ describe("StudentReviewPage", () => {
       error: undefined,
     });
 
-    render(await StudentReviewPage({ params: params() }));
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
 
-    expect(screen.queryByText("Record saved.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Saved — day finished.")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save record" }));
 
-    expect(await screen.findByText("Record saved.")).toBeInTheDocument();
+    expect(await screen.findByText("Saved — day finished.")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

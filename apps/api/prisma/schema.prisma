@@ -97,9 +97,12 @@ model Entry {
   @@index([studentId, entryDate])
 }
 
-/// FR-18/20. No Rejected state — confirmed non-goal.
+/// FR-18/20. Two states, matching what the stakeholder actually described
+/// (interview Q14: "entries go from 'in review' to 'evaluated'"). A report is
+/// born IN_REVIEW the moment a student submits — there is nothing for a
+/// mentor to "start", so there is no SUBMITTED state to leave. No Rejected
+/// state either — confirmed non-goal. ASSUMPTION: O-19.
 enum DailyReportStatus {
-  SUBMITTED
   IN_REVIEW
   EVALUATED
 }
@@ -108,7 +111,7 @@ model DailyReport {
   id           String            @id @default(uuid())
   studentId    String
   reportDate   DateTime          @db.Date
-  status       DailyReportStatus @default(SUBMITTED)
+  status       DailyReportStatus @default(IN_REVIEW)
   reviewedById String?
   inReviewAt   DateTime?         @db.Timestamptz(3)
   evaluatedAt  DateTime?         @db.Timestamptz(3)

@@ -27,37 +27,6 @@ function formString(value: FormDataEntryValue | null): string {
 }
 
 /**
- * Driven by TransitionControl (a client component, day-record-form.tsx's
- * sibling) via `transitionReport.bind(null, studentId, reportId, to)` -- the
- * same fixed-leading-args shape as entry-actions.ts's removeAbsence.
- * useActionState calls the bound function with (prevState, formData); this
- * function ignores both, since studentId/reportId/to are already fixed by
- * bind before it's ever handed to useActionState.
- *
- * The brief's original wiring bound this straight into a plain server-
- * component `<form action={...}>`, which awaits and discards this function's
- * `{ error } | null` return -- the exact discarded-error defect Task 12's
- * review rejected for markAbsent/removeAbsence. Lifting the button into its
- * own client component (transition-control.tsx) driven by useActionState is
- * what lets a 409/404/500 actually reach the mentor.
- */
-export async function transitionReport(
-  studentId: string,
-  reportId: string,
-  to: "InReview" | "Evaluated",
-): Promise<{ error: string } | null> {
-  const client = await apiClient();
-  const { error } = await transitionDailyReport({
-    client,
-    path: { id: reportId },
-    body: { to },
-  });
-  if (error !== undefined) return { error: problemMessage(error, "The transition was rejected.") };
-  revalidatePath(`/review/${studentId}`);
-  return null;
-}
-
-/**
  * Driven by DayRecordForm (a client component) via plain useActionState --
  * this already has the (prevState, formData) reducer shape useActionState
  * requires, same as submitEntry/markAbsent in entry-actions.ts.
@@ -90,6 +59,34 @@ export async function saveDayRecord(
     },
   });
   if (error !== undefined) return { error: problemMessage(error, "The record was not saved.") };
+
+  // Saving a record for a day the student can no longer submit to also
+  // finishes that day (FR-18/FR-20) -- this is what replaced the separate
+  // "Mark evaluated" button. page.tsx decides `closesDay` server-side from
+  // `canSubmitFor`, so a day still inside its submission window never gets
+  // locked out from under the student.
+  //
+  // Two calls rather than one API endpoint doing both: `upsertDayRecord`
+  // writes a MentorDayRecord and `transitionDailyReport` moves a
+  // DailyReport, and those are deliberately independent resources
+  // (schema.prisma says so -- a record must be able to exist for a day with
+  // no report at all). The ordering matters more than the atomicity: if the
+  // transition fails the record is still saved and the day stays OPEN,
+  // which is the safe direction to fail in. A day wrongly left open can be
+  // finished again; a day wrongly locked cannot be reopened (FR-20).
+  const reportId = formString(formData.get("reportId"));
+  if (formData.get("closesDay") === "yes" && reportId !== "") {
+    const { error: transitionError } = await transitionDailyReport({
+      client,
+      path: { id: reportId },
+      body: { to: "Evaluated" },
+    });
+    if (transitionError !== undefined) {
+      revalidatePath(`/review/${studentId}`);
+      return { error: problemMessage(transitionError, "The record saved, but the day was not finished.") };
+    }
+  }
+
   revalidatePath(`/review/${studentId}`);
   return { ok: true };
 }

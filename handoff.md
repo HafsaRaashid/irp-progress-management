@@ -35,6 +35,183 @@ Copies of the PRD, the interview record, and the brief also sit directly under t
 
 ## 1. State of play
 
+### 2026-09-28 — FR-20's lock was never enforced for the mentor's own record
+
+**A finished day could still be rewritten through the API.** `entry-repo.addEntry` and the absence
+writes both threw `LockedDayError` on an `EVALUATED` day; `mentorDayRecord.upsert` had **no check
+at all**, so `PUT /api/v1/students/{id}/day-records/{date}` succeeded against a finished day. The
+only thing preventing it was the Review page declining to render the form — a UI convention
+wearing a lock's clothes. FR-20 was therefore partially unenforced, and interview **Q17**
+(*"approval decisions won't change later"*) is a rule about the system, not about one screen.
+
+Fixed in `mentor-record-repo.upsert`, in the same shape as `addEntry`: advisory lock (ADR-0016),
+then the report read, then the write, all in one transaction — so two mentors racing a save
+against a day being finished cannot both read `IN_REVIEW` and both write.
+
+**Proved the gate fails before trusting it**, per the house rule: with the guard commented out the
+new test returns **200** instead of 409, which is the hole reproduced exactly. Guard restored,
+suite green.
+
+**The seed tripped over the fix, and was wrong.** `run-seed.ts` marked old reports `EVALUATED`
+and *then* wrote their mentor records — an order the application cannot perform. Reordered to
+record-then-finish, which is the sequence a mentor actually works in. That the seed broke is the
+finding, not the inconvenience: it had been reproducing a state no real usage could reach.
+
+**Still open for the stakeholder.** Q17 declined reopening a finished day on the basis that *"the
+evaluation stage covers any adjustments"* — and that stage is FR-24's override, behind **O-5**,
+with no date. So today a mentor's typo on a finished day is uncorrectable, which is not what Q17
+assumed when it said no. Worth putting back to them as its own question; a mentor correcting
+their own factual record is arguably not the "approval decision" Q17 was about.
+
+### 2026-09-28 — O-11 and O-18 decided; weekends stay as Extra
+
+Two open points closed by the stakeholder, both in the interview's favour — and one of them
+required walking a change back.
+
+**O-18 — follow the interview.** Per-submission mentor scoring stays withdrawn. FR-22/23/24 and
+FR-26 stand as written. The evaluation slice is therefore back behind **O-5**, which still has no
+resolution date; that is the accepted cost, not an oversight.
+
+**O-11 — weekends stay, as Extra that adds no points.** Interview **Q9** says *"weekdays only"*,
+and FR-12/FR-33 deviate from it; shown that directly, the stakeholder confirmed the deviation is
+wanted. Weekend submissions continue to be accepted and flagged `isExtra`.
+
+**"Adds no points" was verified, not assumed.** `countCycleOutcomes` (`dashboard-service.ts:180`)
+`continue`s on a non-weekday **before** `requiredDays += 1` and before the status switch, so an
+Extra entry can never reach `settledDays`, `requiredDays` or `complianceRate`. It is tallied
+separately as `counts.extra`, for display. The property is structural — a weekend day exits the
+loop before any scoring line runs — rather than a rule someone has to remember.
+
+**A weekdays-only implementation was built and reverted.** Before the decision, `canSubmitFor`
+gained a weekday guard. It worked, and `packages/core` stayed green at 114 — but it took the
+whole **Extra** feature with it: eight API tests went red because every one creates a weekend
+entry to exercise `extraAfter`, `extraCount`, the `"extra"` day classification and
+`extraCountThisCycle`, and those paths plus the Extra pill, the ribbon's Extra mark and
+`Entry.isExtra` all became unreachable — 21 source files. Reverted in full.
+
+**One real regression it exposed, worth keeping in mind if weekends are ever reconsidered:**
+`absences.ts` calls `canSubmitFor` *before* the repo's weekday check, so the moment `canSubmitFor`
+refused weekends, `WeekendAbsenceError` became **unreachable** — a Saturday absence started
+answering *"the window is closed"* instead of *"there is nothing to be absent from at a weekend"*.
+Same 400, materially worse message. The ordering is unchanged today because `canSubmitFor` still
+accepts weekends, but the guard's reachability depends on that and nothing asserts it.
+
+### 2026-09-25 — The Review page collapses to one action per day
+
+**"Mark evaluated" is gone.** A day now has exactly one mentor control, **Save record**, which
+writes the attendance/tasks record (FR-19) and — when the day is already closed to the student —
+finishes it (FR-18/FR-20). [ADR-0029](docs/adr/0029-one-save-action-per-day.md), logged as
+**O-20**.
+
+**The safety rule is the whole reason this merge is sound.** `canSubmitFor` decides per row,
+server-side, whether finishing is offered. Today and the previous weekday are saved *without*
+being finished, because the lock is irreversible and a mentor recording morning attendance would
+otherwise end the student's submission window mid-day. Those rows stay outstanding until their
+window closes, which is correct rather than a limitation.
+
+**The word "Evaluated" is off the mentor's screen.** It now means only the monthly performance
+index (FR-23), which nothing produces while O-5 is unresolved. The pill and the filter both read
+**Saved**. The enum is still `EVALUATED`; only the label changed.
+
+**Empty weekend days are no longer rendered** — no obligation (FR-12), no denominator (FR-33), so
+"No entry recorded." on a Sunday invented work that does not exist. A weekend holding an Extra
+entry still shows. **Known consequence:** such a day can never be finished, because weekends carry
+no `MentorDayRecord` and that is the only finishing action. Left deliberately — the alternatives
+need **O-11** answered first (interview **Q9** says *"weekdays only"*).
+
+**Density.** 15 panels at ~300px became 11 at ~175px: the per-row section label and helper
+sentence are said once above the list, the attendance controls sit on two rows under a rule
+rather than one cramped strip, filter counts moved out of the chips onto their own line, and the
+duplicate per-entry "On time" pill now renders only for Late or Extra. Day titles became real
+`<h2>`s — the page had a single heading before, so a screen-reader user could not skim it.
+
+**Specs audited against the code** (the reason this matters: a stale spec drives the next plan).
+Two were wrong and are now corrected: `2026-08-02-slice-2-product-design.md` described the
+three-state enum in three places, and **`2026-09-11-plan-8-notifications-design.md` — the next
+plan to build — designs notifications around "each transition", of which there is now exactly
+one**, fired as the second half of a save rather than by its own button. That spec carries a
+STALE banner pointing at the decision it needs to re-make.
+
+### 2026-09-25 — Two report states, and the Review page gets a filter
+
+**A `DailyReport` is now born `In Review`.** "Start review" is gone. It changed no permission,
+unlocked no capability, and recorded an intention rather than a fact — the day was equally
+editable either side of the click. The stakeholder interview §4.4 **Q14** names two states
+("entries go from 'in review' to 'evaluated'"); FR-18's third one was added by the derived
+document, not asked for. [ADR-0028](docs/adr/0028-a-report-is-born-in-review.md); logged as
+**O-19**, because §4.2 reserves FR *wording* to the decision owner even when the evidence and the
+code agree.
+
+This is deliberately the same principle as ADR-0027 pointed the other way: there the FR table
+permitted something the interview declined, here it required something the interview never
+described. Primary record wins in both directions, or it is not a rule.
+
+**What moved with it:**
+- `SUBMITTED` is **removed from the enum**, not merely left uncreated — migration
+  `20260925090000_two_report_states` migrates existing rows and swaps the Postgres type (you
+  cannot drop an enum value in place; the column DEFAULT has to come off first or the
+  `ALTER COLUMN ... TYPE` fails on it).
+- `inReviewAt` is stamped at the **student's submission instant**, and backfilled from
+  `createdAt` for old rows. It used to be set only by the button, so it meant "when a mentor
+  clicked" and was null for every day nobody did.
+- `TransitionRequest.to` admits `Evaluated` alone, so `{ to: "InReview" }` is a **400 at the
+  contract**, not a 409 from a handler. Forward-only is now enforced by the request's shape.
+- `ReviewProgress.submitted` is deleted — it would have been permanently 0. Cycles reads
+  *"N evaluated · N to review"*.
+- The seed no longer force-sets the In Review band; those rows are already in that state, and
+  writing it would have set `reviewedById` on reports no mentor has touched.
+
+**The Review page filters instead of scrolling.** Three `.chip` links — Needs review (default),
+Evaluated, All — with live counts, reusing the filter vocabulary Roster and Cycles already have.
+The state lives in `?show=`, not client state: a Server Action (Mark evaluated, Save record)
+revalidates and re-renders the page, and client filter state would survive that only by accident
+of not remounting. Side-by-side columns were rejected on the 1280px floor — two ~495px columns
+for prose plus a form, permanently ragged because one side is empty early in a cycle and the
+other is empty late.
+
+A date-range control is the obvious next addition and deliberately **not** bundled here: the API
+already takes `from`/`to`, and "which days exist" is a different question from "which of them do
+I still owe work on".
+
+### 2026-09-25 — Plan 9 built, then withdrawn: the interview outranked the task list
+
+**Nothing from Plan 9's scoring model is in `main`, and nothing should be.** The plan shipped
+per-submission mentor scoring — three `Entry` columns, `PUT /api/v1/entries/{id}/review`, a
+mentor/student mapping split, and a per-entry control on the Review page — behind **O-18**, an
+open point it had opened itself to record its own assumption. A review of the primary record
+before merge found that `docs/stakeholder-interview.md` answers the question three times and
+answers it **no**:
+
+- **Q15** — *"Can the admin approve an item but tick 'does NOT count'?"* — **No.** That is the
+  `countsTowardEvaluation` flag, described almost word for word and declined.
+- **Q16** — *approval granularity, per item or per daily report?* — *"The mentor tracks attendance
+  and tasks themselves"* — the daily report, not the submission.
+- **Q25** — *"What scale do you score on day-to-day?"* — *"Day-to-day scoring is unnecessary."*
+  FR-26 is that answer written down.
+
+**Q25 on its own was arguable** — it was asked inside the AI design, so *"unnecessary"* may have
+meant *"unnecessary because the AI does it"*, which removing the AI would reopen. **Q15 is not**:
+it mentions no AI, is purely about mentor approval granularity, and was answered no.
+
+**The whole plan — spec, plan, ADR-0026 — reasoned from the FR table and never opened the
+interview.** That is the process failure worth remembering, not the scoring design itself. The
+countervailing source, `irp-consolidation-task-list.xlsx`, does ask for this behaviour, but it is
+not in this repository and could not be checked; the branch overrode a verifiable "no" on an
+unverifiable "yes".
+
+Withdrawn per [ADR-0027](docs/adr/0027-stakeholder-interview-governs-over-consolidation-task-list.md),
+superseding ADR-0026. FR-22/23/24 and FR-26 stand as written, so the evaluation slice is **back
+behind O-5**. O-18 has been rewritten to record the source conflict itself — the stakeholder must
+reconcile it, since §4.2 reserves requirement-level changes to them.
+
+**Kept from the branch**, none of it scoring-related and none of it in conflict with any interview
+answer: a 400 on a `MentorDayRecord` write for a future date (`FutureDayRecordError`); a day
+range whose `to` defaults to today rather than the cycle's end; the Review page grouped into
+"Needs review" and "Evaluated"; and the sidebar's "Review" entry dropped, since it pointed at a
+landing page with no student directory. The plan, spec and ADR-0026 are kept with WITHDRAWN
+banners rather than deleted — the record of what was built and why it went is worth more than a
+clean directory.
+
 ### 2026-08-18 — PR #17's red CI, and the web dev server moves to 3100
 
 Two things, both outside any plan. **Both merged the same day — #17 then #18 — and `main` is now at
@@ -539,10 +716,13 @@ from CI — but note the dev bypass means **nothing is blocked on it for buildin
 | # | Item | Blocks |
 |---|---|---|
 | **—** | ~~**A dedicated Entra directory.**~~ **Superseded — see the callout above.** The Azure *subscription* exists and hosting works; Entra itself is not blocked on a *dedicated* directory — `bistecglobal.com`/`bisteccare.lk` are one tenant and app-registration permissions are sufficient. Kept for record: Damian's work account has no Entra admin access in the (moot) dedicated-directory design; the fallback there was a free tenant from a personal Microsoft account, with a native `admin@<name>.onmicrosoft.com` | **No longer blocks building or demoing** — Plan 3's dev bypass removed that dependency. Still blocks: real Microsoft sign-in, `infra/entra.bicep`, and waking the dormant real-token CI job — now pending the mentor's governance sign-off on registering in BISTEC's live tenant, not a dedicated-directory technicality. `docs/manual-setup-steps.md` §1.1a |
-| O-5 | **AI provider + data-processing approval.** Student submissions are personal data leaving the tenant | The whole AI slice (Plan 9, FR-22 to FR-26). Needs an ADR and escalation to leadership |
+| O-5 | **AI provider + data-processing approval.** Student submissions are personal data leaving the tenant | The whole AI slice (Plan 9, FR-22 to FR-26). Needs an ADR and escalation to leadership. **Plan 9 tried to route around this by scoring per submission instead; withdrawn (ADR-0027) because the interview declines that design — so this row blocks the evaluation slice again, exactly as it did before** |
 | O-6 | Exact wording of the five rubric criteria | The evaluation schema and screen |
 | O-10 | FR-13 and FR-15 conflict on the Monday grace window | Implemented on the FR-15 reading, marked `// ASSUMPTION: O-10`. Blocks nothing |
 | O-11 | Weekends reclassified as optional Extra work — **changes FR-12, adds FR-33** | Implemented. §4.2 reserves FR changes to the mentor, so sign-off is outstanding |
+| O-18 | **The consolidation task list and the stakeholder interview disagree on per-submission scoring.** Interview Q15/Q16/Q25 say no; the task list asks for it. The interview governs (ADR-0027) | **Blocks the evaluation slice**, by handing it back to O-5. Only the stakeholder can reconcile it — §4.2 reserves requirement-level changes to them. `docs/interview-and-prd.md` §5 |
+| O-19 | **FR-18 says three report states; the interview (Q14) names two.** Implemented as two — a report is born In Review (ADR-0028) | Blocks nothing. FR-18's sentence needs one edit at the next requirements review. `docs/interview-and-prd.md` §5 |
+| O-20 | **FR-18/FR-20 describe an explicit mentor transition; it is now folded into Save record.** Implemented per ADR-0029 | Blocks nothing. FR wording needs one edit at the next requirements review. `docs/interview-and-prd.md` §5 |
 | O-12 | Next.js 16 over the pinned 15 | Impl Lead confirmed 2026-07-28; build proceeds. Mentor notification outstanding |
 | O-13 | OpenAPI 3.1 over the brief's 3.0 | Impl Lead accepted the grading risk. Shipped |
 | O-1, O-2, O-3, O-4, O-7, O-8, O-9 | Interview metadata; email delivery; tie-break; leadership access; absence penalty; non-goals confirmation; Demo Day date | Assumptions stated; nothing blocked |
@@ -588,7 +768,7 @@ begins. Plans live in `docs/superpowers/plans/`, specs in `docs/superpowers/spec
 | | *(UI follow-ups to 7 — no new T-numbers)* | — | — | ✅ **Merged, PRs #13–#17.** Design-system pass (#13); roster legibility + `Batch 1`/`Batch 2` seed rename (#14); the collapsed ribbon key and `workers: 1` (#15, ADR-0020); **7A** Settings page, theme by cookie, verified dark (#16, ADR-0021/0022); **7B** frame and brand — sidebar icons, the logo, Sign out relocated, `Create batch` returned to Students (#17, ADR-0023). 7A and 7B carry their own plan/spec pairs under `docs/superpowers/` |
 | | *(developer-environment chore)* | — | — | ✅ **Merged, PR #18.** Web dev server moved 3000 → **3100**; container-internal ports deliberately unchanged. No FR — see CLAUDE.md's **Local ports** rule |
 | **3 — Evaluation** | 8 · Notifications | T-16 | — | 🚧 **PR #2 open, not yet merged.** `NotificationService` + Teams webhook + SMTP senders, wired fire-and-forget into entry submission, absence marking, and daily-report transitions; full test suite green. Plan: `docs/superpowers/plans/2026-09-15-plan-8-notifications.md` · Spec: `docs/superpowers/specs/2026-09-11-plan-8-notifications-design.md` · ADRs: 0024 (Teams webhook), 0025 (SMTP via M365) |
-| | 9 · AI evaluation | T-17 | — | **Blocked on O-5** |
+| | 9 · AI evaluation | T-17 | — | **Blocked on O-5.** A per-submission-review pivot was built and withdrawn before merge (ADR-0026, superseded by [ADR-0027](docs/adr/0027-stakeholder-interview-governs-over-consolidation-task-list.md)) — the stakeholder interview declines that design at Q15/Q16/Q25. See **O-18** |
 | | 10 · Winner + PDF | T-18 | — | Not started |
 | **4 — Proving it** | 11 · Load test + retro | T-24 – T-26 | D4 | Not started — and cannot start meaningfully until the deploy runbook's §1 bootstrap is run: NFR-1/NFR-2's k6 targets need a deployed URL, and NFR-3 needs the Entra directory this plan deferred a fourth time |
 

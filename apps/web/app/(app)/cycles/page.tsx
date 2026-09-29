@@ -198,8 +198,7 @@ export default async function CyclesPage({
                     </Td>
                     <Td style={{ color: "var(--ink-muted)" }}>
                       <span className="tabular">
-                        {reviewProgress.evaluated} evaluated · {reviewProgress.inReview} in review ·{" "}
-                        {reviewProgress.submitted} to do
+                        {reviewProgress.evaluated} evaluated · {reviewProgress.inReview} to review
                       </span>
                     </Td>
                     <Td data-testid={`evaluation-${student.id}`} style={{ color: "var(--ink-muted)" }}>

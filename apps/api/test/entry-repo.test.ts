@@ -24,16 +24,25 @@ describe.skipIf(!dbUrl)("createEntryRepo", () => {
     });
   }
 
-  it("first entry creates the daily report as SUBMITTED; a second entry reuses it (FR-11, FR-18)", async () => {
+  it("first entry creates the daily report already IN_REVIEW; a second entry reuses it without resetting inReviewAt (FR-11, FR-18)", async () => {
     const s = await student("e-1");
     const first = await repo.addEntry({ studentId: s.id, entryDate: MONDAY, body: "stood up the parser", submittedAt: MONDAY_5PM });
     expect(first.isLate).toBe(false);
     const report = await repo.getReport(s.id, MONDAY);
-    expect(report?.status).toBe("SUBMITTED");
+    // Born IN_REVIEW: the submission IS the thing under review, so there is
+    // no earlier state for a mentor to move it out of (ASSUMPTION: O-19).
+    expect(report?.status).toBe("IN_REVIEW");
+    const created = await prisma.dailyReport.findUniqueOrThrow({ where: { id: report!.id } });
+    expect(created.inReviewAt).toEqual(MONDAY_5PM);
 
-    await repo.addEntry({ studentId: s.id, entryDate: MONDAY, body: "fixed the tests", submittedAt: new Date("2026-08-03T12:00:00Z") });
+    const SECOND = new Date("2026-08-03T12:00:00Z");
+    await repo.addEntry({ studentId: s.id, entryDate: MONDAY, body: "fixed the tests", submittedAt: SECOND });
     expect(await prisma.dailyReport.count()).toBe(1);
     expect(await prisma.entry.count()).toBe(2);
+    // The upsert's `update: {}` is what keeps this true -- a later entry on
+    // the same day must not restamp when the day entered review.
+    const reused = await prisma.dailyReport.findUniqueOrThrow({ where: { id: report!.id } });
+    expect(reused.inReviewAt).toEqual(MONDAY_5PM);
   });
 
   it("stores late flags computed from the historical instant (FR-13)", async () => {

@@ -88,12 +88,12 @@ describe("StatusPill", () => {
     expect(screen.getByText(/In review/)).toBeInTheDocument();
   });
 
-  it("appends the Evaluated suffix with its lock glyph when reportStatus is Evaluated", () => {
+  it("appends the Saved suffix with its lock glyph when reportStatus is Evaluated", () => {
     // §3.2 specifies Evaluated as "--ink + lock glyph". The word carries the
     // meaning (§12: never a glyph alone), so the glyph is aria-hidden and
     // asserted structurally rather than by accessible name.
     const { container } = render(<StatusPill status="onTime" reportStatus="Evaluated" />);
-    expect(screen.getByText(/· Evaluated/)).toBeInTheDocument();
+    expect(screen.getByText(/· Saved/)).toBeInTheDocument();
     expect(container.querySelector("svg[aria-hidden='true']")).not.toBeNull();
   });
 

@@ -160,7 +160,7 @@ paths:
                 $ref: '#/components/schemas/Entry'
               examples:
                 onTime:
-                  summary: Submitted on the target day
+                  summary: Recorded on the target day
                   value:
                     id: 7be9f1d2-3c44-4f8a-9a01-2b3c4d5e6f70
                     entryDate: '2026-08-03'
@@ -228,7 +228,7 @@ paths:
                   value:
                     - date: '2026-07-31'
                       status: onTime
-                      reportStatus: Submitted
+                      reportStatus: InReview
                       reportId: 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
                       absenceReason: null
                       entries:
@@ -524,7 +524,7 @@ paths:
                       day:
                         date: '2026-08-03'
                         status: onTime
-                        reportStatus: Submitted
+                        reportStatus: InReview
                         reportId: 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
                         absenceReason: null
                         entries:
@@ -692,7 +692,6 @@ paths:
                           extra: 2
                           complianceRate: 0.9412
                         reviewProgress:
-                          submitted: 4
                           inReview: 3
                           evaluated: 10
         '400':
@@ -966,12 +965,13 @@ paths:
       operationId: transitionDailyReport
       summary: Advance a daily report's review state
       description: |
-        Moves one report forward one step (FR-18): Submitted to InReview, or
-        InReview to Evaluated. Forward-only — there is no Rejected state and
-        no way back. The current state must match what the target expects
-        (409 otherwise); an `updateMany` guarded on the expected current
-        state makes two mentors racing the same step resolve to exactly one
-        winner rather than a lost update.
+        Moves one report to its final state (FR-18): InReview to Evaluated.
+        That is the only transition — a report is created `InReview` the
+        moment a student submits, so there is nothing before it for a mentor
+        to advance it out of. Forward-only: there is no Rejected state and no
+        way back. The report must still be `InReview` (409 otherwise); an
+        `updateMany` guarded on that state makes two mentors racing the same
+        step resolve to exactly one winner rather than a lost update.
       tags: [Reviews]
       parameters:
         - name: id
@@ -997,13 +997,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/DailyReport'
               examples:
-                inReview:
-                  summary: Moved from Submitted to InReview
+                evaluated:
+                  summary: Moved from InReview to Evaluated, locking the day
                   value:
                     id: 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
                     studentId: 3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8
                     reportDate: '2026-08-03'
-                    status: InReview
+                    status: Evaluated
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1528,10 +1528,14 @@ components:
     ReportStatus:
       type: string
       title: ReportStatus
-      enum: [Submitted, InReview, Evaluated]
-      description: Review state of one day's rolled-up report (FR-18/FR-20). Forward-only; Evaluated locks the day.
+      enum: [InReview, Evaluated]
+      description: |
+        Review state of one day's rolled-up report (FR-18/FR-20). A report is
+        born `InReview` when the student submits — the submission is the thing
+        under review, so there is no earlier state. Forward-only; `Evaluated`
+        locks the day.
       examples:
-        - Submitted
+        - InReview
 
     DaySummary:
       type: object
@@ -2032,20 +2036,17 @@ components:
     ReviewProgress:
       type: object
       title: ReviewProgress
-      description: The student's daily reports in this cycle by review state (FR-18). Forward-only; there is no Rejected state.
-      required: [submitted, inReview, evaluated]
+      description: |
+        The student's daily reports in this cycle by review state (FR-18).
+        Forward-only; there is no Rejected state, and there is no state before
+        `inReview` — a report is created in it the moment a student submits.
+      required: [inReview, evaluated]
       additionalProperties: false
       properties:
-        submitted:
-          type: integer
-          minimum: 0
-          description: Reports awaiting a mentor's first look.
-          examples:
-            - 4
         inReview:
           type: integer
           minimum: 0
-          description: Reports a mentor has opened but not finished.
+          description: Reports submitted and not yet evaluated — the mentor's outstanding work.
           examples:
             - 3
         evaluated:
@@ -2216,16 +2217,16 @@ components:
     TransitionRequest:
       type: object
       title: TransitionRequest
-      description: Advance a report one step. Forward-only — Submitted to InReview to Evaluated; there is no Rejected and no way back.
+      description: Advance a report to its final state. Forward-only — InReview to Evaluated; there is no Rejected and no way back.
       required: [to]
       additionalProperties: false
       properties:
         to:
           type: string
-          enum: [InReview, Evaluated]
-          description: The target state. InReview requires the report to be Submitted; Evaluated requires InReview.
+          enum: [Evaluated]
+          description: The target state. The only one there is — `Evaluated` requires the report to still be `InReview`.
           examples:
-            - InReview
+            - Evaluated
 
     DailyReport:
       type: object

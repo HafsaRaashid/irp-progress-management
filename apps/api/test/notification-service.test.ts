@@ -139,17 +139,12 @@ describe("createNotificationService", () => {
     expect(teams.sendTeams.mock.calls[1]![0].title).toContain("Absent");
     expect(teams.sendTeams.mock.calls[1]![0].title).toContain("medical");
 
-    service.notify({
-      type: "ReportTransitioned", studentId: "student-1", reportId: "report-1", to: "InReview",
-    });
-    await flush();
-    expect(teams.sendTeams.mock.calls[2]![0].title).toContain("In Review");
-
+    // A report is born In Review (ADR-0028) — Evaluated is the only reachable transition.
     service.notify({
       type: "ReportTransitioned", studentId: "student-1", reportId: "report-1", to: "Evaluated",
     });
     await flush();
-    expect(teams.sendTeams.mock.calls[3]![0].title).toContain("Evaluated");
+    expect(teams.sendTeams.mock.calls[2]![0].title).toContain("Evaluated");
   });
 
   it("does not throw when a sender rejects on every call", async () => {

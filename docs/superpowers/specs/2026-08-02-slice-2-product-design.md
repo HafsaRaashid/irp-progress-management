@@ -71,7 +71,7 @@ column ever holds a Colombo-local instant.
 | `Batch` | FR-6 | `id`, `name` (unique), `startDate`, `endDate`. `startDate` is the admission date anchoring the batch's cycle calendar (FR-9, `firstEvaluatedCycleStart`). No cap on concurrent batches. |
 | `Enrolment` | FR-8 | `id`, `studentId → User`, `batchId → Batch`, `startDate`, `endDate?`. Transfer = set `endDate` on the old row, insert the new one. At most one open enrolment per student (partial unique index on `endDate IS NULL`). History follows the student; the 6-month programme clock runs from the student's **first** enrolment start. |
 | `Entry` | FR-10/11/13/33 | `id`, `studentId`, `entryDate DATE`, `body TEXT`, `submittedAt`, `isLate`, `isExtra`. Both flags computed **at submission time** by `packages/core` (`canSubmitFor`, `isWeekday`, grace logic) and stored — history is never re-derived, so a later rule change cannot silently reclassify old rows. |
-| `DailyReport` | FR-18/20 | `id`, `studentId`, `reportDate DATE`, `status` enum `SUBMITTED → IN_REVIEW → EVALUATED` (no Rejected — FR-18), `reviewedById?`, `inReviewAt?`, `evaluatedAt?`. Unique (`studentId`, `reportDate`). Created on the first entry for a date. `EVALUATED` locks the day for the student (FR-20): no further entries, no absence changes. |
+| `DailyReport` | FR-18/20 | `id`, `studentId`, `reportDate DATE`, `status` enum `IN_REVIEW → EVALUATED` (no Rejected — FR-18; **`SUBMITTED` removed 2026-09-25**, [ADR-0028](../../adr/0028-a-report-is-born-in-review.md) — a report is created IN_REVIEW at the student's submission instant, per interview Q14), `reviewedById?`, `inReviewAt?`, `evaluatedAt?`. Unique (`studentId`, `reportDate`). Created on the first entry for a date. `EVALUATED` locks the day for the student (FR-20): no further entries, no absence changes. |
 | `MentorDayRecord` | FR-19 | `id`, `studentId`, `date DATE`, `attended BOOLEAN`, `tasksCompleted BOOLEAN`, `note?`, `recordedById`, timestamps. Unique (`studentId`, `date`). **Deliberately separate from `DailyReport`:** FR-19 says the mentor records independently of what the student wrote, and attendance must be recordable for a day with no entries at all (attended but never submitted). The one addition to T-05's table list — additive, and T-05 is traceability, not schema. |
 | `AbsenceRecord` | FR-16 | `id`, `studentId`, `date DATE` (weekday only, service-enforced), `reason TEXT`, timestamps. Unique (`studentId`, `date`). Weekends have nothing to be absent from. |
 | `Cycle` | FR-9 | `id`, `batchId`, `seq` (1-based), `startDate`, `endDate`. Materialised from the engine (`cycleFor`) per batch so `Evaluation` has a stable FK. Unique (`batchId`, `seq`). The engine remains the source of the arithmetic; rows are a cache of its output. |
@@ -152,7 +152,7 @@ existing `--st-*` tokens.
 |---|---|
 | Today (FR-28, SC-4, must-ship) | Per batch: "N of M submitted today", late count, absent count — all visible without scrolling at 1280×800. Plus a per-batch performance summary strip (compliance this cycle). |
 | Roster | Batch picker + date picker (defaulting to today/last required day). A row per enrolled student: status pill, entry count, late/extra badges, mentor-record indicator. Rows link to Review. |
-| Review | One student × one cycle: day-by-day rolled-up entries (newest first — brief R5), absence reasons, the mentor's attendance/tasks form (FR-19), and the transition control `Submitted → In Review → Evaluated` (FR-18). Evaluated days render locked with a lock affordance (FR-20). |
+| Review | One student × one cycle: day-by-day rolled-up entries (newest first — brief R5), absence reasons, the mentor's attendance/tasks form (FR-19), and the day-finishing action (FR-18). **Superseded 2026-09-25:** there is no transition control — the mentor's single "Save record" both records attendance and, for a day the student can no longer submit to, finishes it ([ADR-0028](../../adr/0028-a-report-is-born-in-review.md)). Finished days render locked with a lock affordance (FR-20) and read "Saved", not "Evaluated". |
 | Cycles | Per batch: cycle list with boundaries; per student per cycle: compliance summary. Evaluation column shows the designed "awaiting evaluation" state (D2/D6). |
 | Students | Register mentor/student (with batch + start date), create batch, transfer student, archive; archive view lists archived students read-only (FR-5). |
 
@@ -199,7 +199,7 @@ the database cannot drift.
   compliant; 1 habitually late (submits inside grace); 1 with missed weekdays; 1 with
   absences + reasons; 1 weekend worker (Extra); 1 mid-cycle joiner (FR-27 — joined after
   the current cycle opened); 1 transferred A→B mid-programme (FR-8); 1 archived (FR-5);
-  1 ordinary mixed record. Daily reports spread across `SUBMITTED / IN_REVIEW / EVALUATED`
+  1 ordinary mixed record. Daily reports spread across `IN_REVIEW / EVALUATED`
   so every review state is on screen from day one; `MentorDayRecord`s partially filled so
   the Review page shows both recorded and unrecorded days.
 - **No `Evaluation`/`Override`/`Award` rows** — the empty states are part of the demo (D2, D6).

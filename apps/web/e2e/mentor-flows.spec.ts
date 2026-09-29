@@ -2,7 +2,9 @@ import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
-import { addDays, compareDates, cycleContaining, dayOfWeek, toProgrammeDate } from "@irp/core";
+import {
+  addDays, canSubmitFor, civilDate, compareDates, cycleContaining, dayOfWeek, toProgrammeDate,
+} from "@irp/core";
 import { SEED_BATCH_NAMES } from "@irp/fixtures";
 import {
   dayPanelByHiddenDate,
@@ -105,7 +107,7 @@ test.describe("mentor flows (dev-admin-1)", () => {
     expect(extraText).toMatch(/^\+\d+$/);
   });
 
-  test("roster -> review -> record -> transition -> lock, over the mixed persona's first Submitted day", async ({
+  test("roster -> review -> record -> transition -> lock, over the mixed persona's first In Review day", async ({
     page,
   }) => {
     await signInAsMentor(page);
@@ -116,56 +118,95 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await chamodiRow.getByRole("link", { name: "Review" }).click();
     await expect(page).toHaveURL(/\/review\//);
 
-    // The mixed persona's mostly-onTime pattern guarantees at least one
-    // Submitted weekday report; "Start review" only renders for a Submitted
-    // day (transition-control.tsx), so the first one in DOM order (days
-    // render newest-first) is exactly that day.
-    const startReviewButton = page.getByRole("button", { name: "Start review" }).first();
-    await expect(startReviewButton).toBeVisible();
-
-    const rawPanel = startReviewButton.locator(
-      'xpath=ancestor::div[contains(@class,"rounded-[var(--radius-panel)]")][1]',
+    // "Save record" is the only action on a day now: it records attendance
+    // AND, for a day the student can no longer submit to, finishes it
+    // (ADR-0029). Both halves are exercised below, on two different rows,
+    // because the difference between them IS the FR-20 safety rule.
+    //
+    // Rows are chosen by DATE, not by index. An earlier version took
+    // .nth(1) on the reasoning that only the newest row is still open --
+    // wrong on a Monday, when today AND the previous Friday are both inside
+    // grace. How many leading rows are open depends on the weekday and on
+    // which days the persona has entries for, so ask canSubmitFor.
+    const dateInputs = page.locator('input[type="hidden"][name="date"]');
+    await expect(dateInputs.first()).toBeAttached();
+    const now = new Date();
+    const dates = await Promise.all(
+      (await dateInputs.all()).map((l) => l.inputValue()),
     );
-    const isoDate = await rawPanel.locator('input[type="hidden"][name="date"]').inputValue();
-    // Re-derived via the hidden date input rather than reused as a handle --
-    // this locator stays valid for every step below up to (not including)
-    // the Evaluated transition, which is exactly when DayRecordForm, and its
-    // hidden input, unmount (FR-20).
-    const panel = dayPanelByHiddenDate(page, isoDate);
-    const dateLabel = await panelDateLabel(panel);
+    const openCandidates = dates.filter((d) => canSubmitFor(civilDate(d), now));
+    const closedDate = dates.find((d) => !canSubmitFor(civilDate(d), now)) ?? "";
+    expect(openCandidates.length, "no still-open day on screen").toBeGreaterThan(0);
+    expect(closedDate, "no closed day on screen to finish").not.toBe("");
 
-    await panel.getByRole("checkbox", { name: "Attended" }).check();
-    await panel.getByRole("checkbox", { name: "Tasks completed" }).check();
-    await panel.getByRole("textbox").fill("E2E review note");
-    await panel.getByRole("button", { name: "Save record" }).click();
+    // The mixed persona's seed pattern skips roughly one working day in six
+    // (run-seed.ts: dayIndex % 6 === 3) -- a skipped day has no entry and so
+    // no report at all (ADR-0028: a report is born only at student
+    // submission), and it shows no "In review" text no matter how the
+    // mentor's own record is saved. Pick an open day that ALREADY carries a
+    // report before touching anything, so the assertion below is about the
+    // save NOT re-locking an in-review day, not about whether a report
+    // exists in the first place -- which date this lands on shifts with
+    // "today", so it cannot be selected by position.
+    let openDate = "";
+    for (const candidate of openCandidates) {
+      const alreadyInReview = await dayPanelByHiddenDate(page, candidate)
+        .getByText("In review")
+        .count();
+      if (alreadyInReview > 0) {
+        openDate = candidate;
+        break;
+      }
+    }
+    expect(
+      openDate,
+      "no still-open day with an existing report to test the non-locking save against",
+    ).not.toBe("");
 
-    // Not asserting the transient "Record saved." text: this is this day's
-    // FIRST record, so saving flips DayRecordForm's `defaults` prop from
-    // undefined to defined -- review/[studentId]/page.tsx renders those as
-    // two separate JSX branches (mirroring the documented reason
-    // TransitionControl does the same for Submitted vs InReview), so the
-    // pre-save DayRecordForm instance unmounts and a fresh one mounts with
-    // `defaults` populated in the very same update that would show the
-    // confirmation, before it can reliably paint. A fresh GET proves
+    // ── half one: a day still inside the window saves WITHOUT finishing ──
+    const openPanel = dayPanelByHiddenDate(page, openDate);
+    await openPanel.getByRole("checkbox", { name: "Attended" }).check();
+    await openPanel.getByRole("checkbox", { name: "Tasks completed" }).check();
+    await openPanel.getByRole("textbox").fill("E2E open-day note");
+
+    await openPanel.getByRole("button", { name: "Save record" }).click();
+
+    // Not asserting the transient confirmation: this is the day's FIRST
+    // record, so saving flips DayRecordForm's `defaults` from undefined to
+    // defined and page.tsx renders those as two separate JSX branches -- the
+    // pre-save instance unmounts and a fresh one mounts in the very same
+    // update that would have painted the message. A fresh GET proves
     // persistence server-side instead, the same "don't trust the client's
     // optimistic view" standard the submission test applies. page.goto, not
-    // page.reload() -- see that test's comment: reload() risks resubmitting
-    // the last Server Action form post as a genuine duplicate.
+    // page.reload(): reload() risks resubmitting the Server Action post.
     await page.goto(page.url());
-    await expect(panel.getByRole("checkbox", { name: "Attended" })).toBeChecked();
-    await expect(panel.getByRole("checkbox", { name: "Tasks completed" })).toBeChecked();
-    await expect(panel.getByRole("textbox")).toHaveValue("E2E review note");
+    const openAgain = dayPanelByHiddenDate(page, openDate);
+    await expect(openAgain.getByRole("checkbox", { name: "Attended" })).toBeChecked();
+    await expect(openAgain.getByRole("checkbox", { name: "Tasks completed" })).toBeChecked();
+    await expect(openAgain.getByRole("textbox")).toHaveValue("E2E open-day note");
+    // Still outstanding, and still editable -- the record saved, the day did
+    // not lock, which is the whole point of the FR-20 guard.
+    await expect(openAgain.getByText("In review")).toBeVisible();
 
-    await panel.getByRole("button", { name: "Start review" }).click();
-    await expect(panel.getByText("In review")).toBeVisible();
+    // ── half two: a day past its window saves AND finishes ──
+    const closedPanel = dayPanelByHiddenDate(page, closedDate);
+    const closedLabel = await panelDateLabel(closedPanel);
+    await closedPanel.getByRole("checkbox", { name: "Attended" }).check();
+    await closedPanel.getByRole("checkbox", { name: "Tasks completed" }).check();
+    await closedPanel.getByRole("button", { name: "Save record" }).click();
 
-    await panel.getByRole("button", { name: "Mark evaluated" }).click();
+    // Neither old step exists: a submission lands In review with no mentor
+    // click (ADR-0028), and finishing is folded into the save (ADR-0029).
+    await expect(page.getByRole("button", { name: "Start review" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Mark evaluated" })).toHaveCount(0);
 
-    // dayPanelByHiddenDate no longer resolves once Evaluated unmounts the
-    // form -- relocate the same day by its date label, which FR-20 keeps
-    // rendering (locked, not hidden).
-    const lockedPanel = dayPanelByLabel(page, dateLabel);
-    await expect(lockedPanel.getByText(/· Evaluated/)).toBeVisible();
+    // Two things moved at once on that save: the day was finished, which
+    // unmounts DayRecordForm (so dayPanelByHiddenDate stops resolving,
+    // FR-20), AND it left the default "In review" filter. Switch to
+    // ?show=saved and relocate by date label.
+    await page.goto(`${page.url().split("?")[0]}?show=saved`);
+    const lockedPanel = dayPanelByLabel(page, closedLabel);
+    await expect(lockedPanel.getByText(/· Saved/)).toBeVisible();
     await expect(lockedPanel.getByRole("button")).toHaveCount(0);
   });
 

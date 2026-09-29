@@ -14,6 +14,11 @@ apps/api/src/generated/
 # so SDD artefacts and mockups were one `git add .` away from being committed.
 .superpowers/
 
+# specclaw scratch: proposals, specs, task lists, verify/review reports, and
+# brownfield analysis output. Same reasoning as .superpowers/ above -- tool
+# working state, not a project artefact.
+.specclaw/
+
 # Playwright
 test-results/
 playwright-report/

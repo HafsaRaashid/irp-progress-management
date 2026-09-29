@@ -115,7 +115,7 @@ picker.
 
 `Review`, then pick a student. One student, one cycle, newest day first.
 
-- The forward-only control: `Submitted → In Review → Evaluated`. There is no reject button
+- **One control per day: Save record.** A day is already In Review when you open it — the submission is the thing under review, so there is nothing to "start" (ADR-0028) — and saving the attendance record also finishes the day, so there is nothing separate to "mark" either (ADR-0029). A day the student can still submit to (today, and the previous weekday) is saved *without* being finished, because finishing locks it irreversibly. Finished days read **Saved**, not "Evaluated" — that word means the monthly index, which nothing produces yet. There is no reject button
   anywhere, by design (FR-18).
 - Mark a day `Evaluated` and it **locks** — the student can no longer submit or change an absence
   for it (FR-20). The lock is visible, not silent.

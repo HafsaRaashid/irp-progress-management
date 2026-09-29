@@ -50,7 +50,6 @@ export interface CycleCounts {
 }
 
 export interface ReviewProgress {
-  submitted: number;
   inReview: number;
   evaluated: number;
 }
@@ -204,9 +203,8 @@ export function countCycle(days: DayView[], enrolments: EnrolmentInterval[]): Cy
 
 /** Daily reports in the window, by review state. A weekend entry creates a report too, so this is not weekday-clipped. */
 export function countReviewProgress(days: DayView[]): ReviewProgress {
-  const progress: ReviewProgress = { submitted: 0, inReview: 0, evaluated: 0 };
+  const progress: ReviewProgress = { inReview: 0, evaluated: 0 };
   for (const day of days) {
-    if (day.reportStatus === "SUBMITTED") progress.submitted += 1;
     if (day.reportStatus === "IN_REVIEW") progress.inReview += 1;
     if (day.reportStatus === "EVALUATED") progress.evaluated += 1;
   }

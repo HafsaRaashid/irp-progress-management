@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { isWeekday, previousWeekday, toProgrammeDate, type CivilDate } from "@irp/core";
+import { addDays, isWeekday, nextWeekday, previousWeekday, toProgrammeDate, type CivilDate } from "@irp/core";
 import { buildTestServer } from "./helpers/build-test-server.js";
 import { resolveRange } from "../src/routes/me-days.js";
 import { resetDb } from "./helpers/db.js";
@@ -51,6 +51,13 @@ interface DaySummaryLike {
 function weekdayInWindow(): CivilDate {
   const today = toProgrammeDate(new Date());
   return isWeekday(today) ? today : previousWeekday(today);
+}
+
+// nextWeekday always returns a date strictly after today (mirroring
+// previousWeekday's own documented "strictly before" guarantee), so this is
+// deterministic regardless of which real-world day this suite runs on.
+function futureWeekday(): CivilDate {
+  return nextWeekday(toProgrammeDate(new Date()));
 }
 
 // A known Monday (confirmed by `absence-repo.test.ts`'s own MONDAY constant)
@@ -104,59 +111,41 @@ describe.skipIf(!dbUrl)(
     }
 
     describe("transition", () => {
-      it("moves Submitted to InReview (200), sets reviewedById and inReviewAt", async () => {
+      it("a submitted day is already InReview -- no transition needed to get there", async () => {
         const { reportId } = await submittedReportId("rev-t1-student");
-        const m = await mentor("rev-t1-mentor");
 
-        const res = await app.inject({
-          method: "POST",
-          url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearer(await signToken({ oid: "rev-t1-mentor" })),
-          payload: { to: "InReview" },
-        });
-
-        expect(res.statusCode).toBe(200);
-        const body = res.json<DailyReportLike>();
-        expect(body.id).toBe(reportId);
-        expect(body.status).toBe("InReview");
-
+        // No transition call at all. The report exists because a student
+        // submitted, and that submission is itself the thing under review
+        // (ASSUMPTION: O-19), so inReviewAt is already stamped.
         const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
         expect(row.status).toBe("IN_REVIEW");
-        expect(row.reviewedById).toBe(m.id);
         expect(row.inReviewAt).not.toBeNull();
         expect(row.evaluatedAt).toBeNull();
       });
 
-      it("moves InReview to Evaluated (200), sets evaluatedAt", async () => {
+      it("moves InReview to Evaluated (200) in one step, sets reviewedById and evaluatedAt", async () => {
         const { reportId } = await submittedReportId("rev-t2-student");
-        await mentor("rev-t2-mentor");
-        const bearerHeader = bearer(await signToken({ oid: "rev-t2-mentor" }));
-
-        const first = await app.inject({
-          method: "POST",
-          url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
-          payload: { to: "InReview" },
-        });
-        expect(first.statusCode).toBe(200);
+        const m = await mentor("rev-t2-mentor");
 
         const res = await app.inject({
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
+          headers: bearer(await signToken({ oid: "rev-t2-mentor" })),
           payload: { to: "Evaluated" },
         });
 
         expect(res.statusCode).toBe(200);
         const body = res.json<DailyReportLike>();
+        expect(body.id).toBe(reportId);
         expect(body.status).toBe("Evaluated");
 
         const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
         expect(row.status).toBe("EVALUATED");
+        expect(row.reviewedById).toBe(m.id);
         expect(row.evaluatedAt).not.toBeNull();
       });
 
-      it("rejects a repeat InReview transition with 409 invalid-transition", async () => {
+      it("rejects a repeat Evaluated transition with 409 invalid-transition", async () => {
         const { reportId } = await submittedReportId("rev-t3-student");
         await mentor("rev-t3-mentor");
         const bearerHeader = bearer(await signToken({ oid: "rev-t3-mentor" }));
@@ -165,7 +154,7 @@ describe.skipIf(!dbUrl)(
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
           headers: bearerHeader,
-          payload: { to: "InReview" },
+          payload: { to: "Evaluated" },
         });
         expect(first.statusCode).toBe(200);
 
@@ -173,7 +162,7 @@ describe.skipIf(!dbUrl)(
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
           headers: bearerHeader,
-          payload: { to: "InReview" },
+          payload: { to: "Evaluated" },
         });
 
         expect(res.statusCode).toBe(409);
@@ -182,35 +171,24 @@ describe.skipIf(!dbUrl)(
         expect(body.type).toBe("https://irp.bistec.example/problems/invalid-transition");
       });
 
-      it("rejects Evaluated to InReview with 409 invalid-transition — forward-only, no way back", async () => {
+      it("rejects `to: InReview` at the contract with 400 -- it is no longer a target, not merely an illegal one", async () => {
         const { reportId } = await submittedReportId("rev-t4-student");
         await mentor("rev-t4-mentor");
-        const bearerHeader = bearer(await signToken({ oid: "rev-t4-mentor" }));
 
-        await app.inject({
-          method: "POST",
-          url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
-          payload: { to: "InReview" },
-        });
-        const evaluated = await app.inject({
-          method: "POST",
-          url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
-          payload: { to: "Evaluated" },
-        });
-        expect(evaluated.statusCode).toBe(200);
-
+        // Deliberately 400, not 409: with one state left to move to,
+        // "InReview" is not a value the request body admits at all, so the
+        // schema rejects it before any handler decides whether it would
+        // have been a legal move. Forward-only is now enforced by the
+        // contract's shape rather than by a runtime status comparison.
         const res = await app.inject({
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
-          headers: bearerHeader,
+          headers: bearer(await signToken({ oid: "rev-t4-mentor" })),
           payload: { to: "InReview" },
         });
 
-        expect(res.statusCode).toBe(409);
-        const body = res.json<ProblemLike>();
-        expect(body.type).toBe("https://irp.bistec.example/problems/invalid-transition");
+        expect(res.statusCode).toBe(400);
+        expect(res.headers["content-type"]).toContain("application/problem+json");
       });
 
       it("rejects an unknown report id with 404 report-not-found", async () => {
@@ -220,7 +198,7 @@ describe.skipIf(!dbUrl)(
           method: "POST",
           url: `/api/v1/daily-reports/${UNKNOWN_UUID}/transition`,
           headers: bearer(await signToken({ oid: "rev-t5-mentor" })),
-          payload: { to: "InReview" },
+          payload: { to: "Evaluated" },
         });
 
         expect(res.statusCode).toBe(404);
@@ -236,7 +214,7 @@ describe.skipIf(!dbUrl)(
           method: "POST",
           url: `/api/v1/daily-reports/${reportId}/transition`,
           headers: bearer(await signToken({ oid: "rev-t6-student" })),
-          payload: { to: "InReview" },
+          payload: { to: "Evaluated" },
         });
 
         expect(res.statusCode).toBe(403);
@@ -297,6 +275,40 @@ describe.skipIf(!dbUrl)(
         expect(body.attended).toBe(false);
       });
 
+      it("rejects a day-record write on a finished (Evaluated) day with 409 day-locked", async () => {
+        // FR-20 applies to the MENTOR's own record, not just the student's
+        // entries. Until 2026-09-28 this path had no lock check at all --
+        // the write succeeded and only the Review page declining to render
+        // the form stopped it, which is a convention, not a lock. Remove
+        // the guard in mentor-record-repo.upsert and this test goes red
+        // with a 200; that is the point of it.
+        const { studentId } = await submittedReportId("rev-d9-student");
+        await mentor("rev-d9-mentor");
+        const header = bearer(await signToken({ oid: "rev-d9-mentor" }));
+        const target = weekdayInWindow();
+
+        const report = await prisma.dailyReport.findFirstOrThrow({ where: { studentId } });
+        const finish = await app.inject({
+          method: "POST",
+          url: `/api/v1/daily-reports/${report.id}/transition`,
+          headers: header,
+          payload: { to: "Evaluated" },
+        });
+        expect(finish.statusCode).toBe(200);
+
+        const res = await app.inject({
+          method: "PUT",
+          url: `/api/v1/students/${studentId}/day-records/${target}`,
+          headers: header,
+          payload: { attended: true, tasksCompleted: true },
+        });
+
+        expect(res.statusCode).toBe(409);
+        expect(res.headers["content-type"]).toContain("application/problem+json");
+        const body = res.json<ProblemLike>();
+        expect(body.type).toBe("https://irp.bistec.example/problems/day-locked");
+      });
+
       it("rejects a weekend date with 400 weekend-day-record", async () => {
         const s = await student("rev-d3-student");
         await mentor("rev-d3-mentor");
@@ -312,6 +324,37 @@ describe.skipIf(!dbUrl)(
         expect(res.headers["content-type"]).toContain("application/problem+json");
         const body = res.json<ProblemLike>();
         expect(body.type).toBe("https://irp.bistec.example/problems/weekend-day-record");
+      });
+
+      it("rejects a date after today with 400 future-day-record — nothing to attend yet", async () => {
+        const s = await student("rev-d7-student");
+        await mentor("rev-d7-mentor");
+
+        const res = await app.inject({
+          method: "PUT",
+          url: `/api/v1/students/${s.id}/day-records/${futureWeekday()}`,
+          headers: bearer(await signToken({ oid: "rev-d7-mentor" })),
+          payload: { attended: true, tasksCompleted: true },
+        });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.headers["content-type"]).toContain("application/problem+json");
+        const body = res.json<ProblemLike>();
+        expect(body.type).toBe("https://irp.bistec.example/problems/future-day-record");
+      });
+
+      it("accepts the boundary weekday (today's own, if today is one) — not just comfortably in the past", async () => {
+        const s = await student("rev-d8-student");
+        await mentor("rev-d8-mentor");
+
+        const res = await app.inject({
+          method: "PUT",
+          url: `/api/v1/students/${s.id}/day-records/${weekdayInWindow()}`,
+          headers: bearer(await signToken({ oid: "rev-d8-mentor" })),
+          payload: { attended: true, tasksCompleted: true },
+        });
+
+        expect(res.statusCode).toBe(200);
       });
 
       it("rejects an unknown student id with 404 student-not-found", async () => {
@@ -459,7 +502,7 @@ describe.skipIf(!dbUrl)(
         expect(body).toHaveLength(1);
         const day = body[0]!;
         expect(day.date).toBe(target);
-        expect(day.reportStatus).toBe("Submitted");
+        expect(day.reportStatus).toBe("InReview");
         expect(day.reportId).not.toBeNull();
         expect(day.entries).toHaveLength(1);
         expect(day.entries[0]!.body).toBe("Wrote the student-days endpoint tests.");
@@ -480,6 +523,41 @@ describe.skipIf(!dbUrl)(
         const body = res.json<DaySummaryLike[]>();
         expect(body[0]!.date).toBe(from);
         expect(body.at(-1)!.date).toBe(to);
+      });
+
+      it("caps the default range at today, not the cycle's end — a future day has nothing to review yet", async () => {
+        const s = await student("rev-s2b-student");
+        await mentor("rev-s2b-mentor");
+        const today = toProgrammeDate(new Date());
+
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/students/${s.id}/days`,
+          headers: bearer(await signToken({ oid: "rev-s2b-mentor" })),
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json<DaySummaryLike[]>();
+        // The list runs one contiguous day at a time from `from` to `to` --
+        // asserting the last entry is today is enough to prove nothing past
+        // it (e.g. the cycle's actual end date) is included by default.
+        expect(body.at(-1)!.date).toBe(today);
+      });
+
+      it("still returns days after today when the caller asks for them explicitly via `to`", async () => {
+        const s = await student("rev-s2c-student");
+        await mentor("rev-s2c-mentor");
+        const future = addDays(toProgrammeDate(new Date()), 5);
+
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/students/${s.id}/days?to=${future}`,
+          headers: bearer(await signToken({ oid: "rev-s2c-mentor" })),
+        });
+
+        expect(res.statusCode).toBe(200);
+        const body = res.json<DaySummaryLike[]>();
+        expect(body.at(-1)!.date).toBe(future);
       });
 
       it("rejects an unknown student id with 404 student-not-found", async () => {
@@ -571,12 +649,12 @@ describe.skipIf(!dbUrl)("POST /api/v1/daily-reports/{id}/transition — notifica
       method: "POST",
       url: `/api/v1/daily-reports/${reportId}/transition`,
       headers: bearer(await signToken({ oid: "notif-rev-1-mentor" })),
-      payload: { to: "InReview" },
+      payload: { to: "Evaluated" },
     });
 
     expect(res.statusCode).toBe(200);
     const row = await prisma.dailyReport.findUniqueOrThrow({ where: { id: reportId } });
-    expect(row.status).toBe("IN_REVIEW");
+    expect(row.status).toBe("EVALUATED");
   });
 
   it("calls notify() exactly once per transition, with `to` matching the request", async () => {
@@ -589,28 +667,30 @@ describe.skipIf(!dbUrl)("POST /api/v1/daily-reports/{id}/transition — notifica
     // EntrySubmitted notify() call — not the transition this test asserts on.
     notify.mockClear();
 
+    // One transition exists now, so "once per transition" is asserted over
+    // the single one there is -- and the repeat below proves the count does
+    // not creep on a rejected attempt.
     const first = await app.inject({
       method: "POST",
       url: `/api/v1/daily-reports/${reportId}/transition`,
       headers: bearerHeader,
-      payload: { to: "InReview" },
+      payload: { to: "Evaluated" },
     });
     expect(first.statusCode).toBe(200);
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "ReportTransitioned", studentId, reportId, to: "InReview" }),
+      expect.objectContaining({ type: "ReportTransitioned", studentId, reportId, to: "Evaluated" }),
     );
 
+    // Already Evaluated: 409, and crucially NO second notification -- a
+    // student must not be told their day was finished twice.
     const second = await app.inject({
       method: "POST",
       url: `/api/v1/daily-reports/${reportId}/transition`,
       headers: bearerHeader,
       payload: { to: "Evaluated" },
     });
-    expect(second.statusCode).toBe(200);
-    expect(notify).toHaveBeenCalledTimes(2);
-    expect(notify).toHaveBeenLastCalledWith(
-      expect.objectContaining({ type: "ReportTransitioned", studentId, reportId, to: "Evaluated" }),
-    );
+    expect(second.statusCode).toBe(409);
+    expect(notify).toHaveBeenCalledTimes(1);
   });
 });

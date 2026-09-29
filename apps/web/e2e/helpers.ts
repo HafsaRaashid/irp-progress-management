@@ -71,14 +71,18 @@ export function formatCivilDateLabel(isoDate: string): string {
  */
 export function dayPanelByLabel(page: Page, dateLabel: string): Locator {
   return page.locator(
-    `xpath=//div[contains(@class,"rounded-[var(--radius-panel)]") and .//div[contains(@class,"uppercase") and normalize-space(text())="${dateLabel}"]]`,
+    // Either title shape: the Review page renders each day title as a real
+    // <h2> (so 15+ panels can be skimmed by heading), while the student's
+    // own pages still use the SectionLabel <div>. This helper serves both
+    // suites, so matching only one silently zero-matched the other.
+    `xpath=//div[contains(@class,"rounded-[var(--radius-panel)]") and .//*[self::h2 or contains(@class,"uppercase")][normalize-space(text())="${dateLabel}"]]`,
   );
 }
 
 /**
  * The day Panel located via DayRecordForm's hidden `date` input instead of
  * the label text -- precise and collision-proof while the form is mounted
- * (Submitted/InReview). It stops resolving the instant a day is marked
+ * (In Review). It stops resolving the instant a day is marked
  * Evaluated, since FR-20 unmounts DayRecordForm entirely at that point; use
  * dayPanelByLabel (captured from panelDateLabel below, before that happens)
  * for any assertion that must survive past the lock.
@@ -93,7 +97,7 @@ export function dayPanelByHiddenDate(page: Page, isoDate: string): Locator {
 export async function panelDateLabel(panel: Locator): Promise<string> {
   const text = await panel
     .locator(
-      'xpath=.//div[contains(@class,"mb-3") and contains(@class,"justify-between")]//div[contains(@class,"uppercase")]',
+      'xpath=.//div[contains(@class,"mb-3") and contains(@class,"justify-between")]//*[self::h2 or contains(@class,"uppercase")]',
     )
     .first()
     .textContent();

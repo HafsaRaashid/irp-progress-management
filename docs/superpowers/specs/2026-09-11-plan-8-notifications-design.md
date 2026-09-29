@@ -44,6 +44,15 @@ this system:
   `Submitted → In Review → Evaluated` (`apps/api/src/routes/reviews.ts:65-74`). Each transition
   triggers.
 
+  > **STALE as of 2026-09-25 — re-check before building this plan.** There is now exactly **one**
+  > transition, `In Review → Evaluated`, because a report is created `In Review` at the student's
+  > submission instant ([ADR-0028](../../adr/0028-a-report-is-born-in-review.md)). So "each
+  > transition triggers" resolves to a single event, not two, and this section's "three trigger
+  > points" is really two. The endpoint is also no longer called directly by the UI — the mentor's
+  > "Save record" calls it as the second half of one action, so a notification fired here will read
+  > as "the mentor finished your day", not "the mentor started reviewing". Decide deliberately
+  > whether that is the event FR-21 wants before implementing.
+
 Absence *removal* (`DELETE /api/v1/absences/:date`) does **not** trigger — it retracts a prior
 submission rather than making one, and FR-21 does not ask for "un-submission" notifications.
 

@@ -238,25 +238,17 @@ export async function runSeed(prisma: PrismaClient, now: Date): Promise<void> {
   const mentorRecords = createMentorRecordRepo(prisma);
   const mentor1 = mentorRows[0]!;
   const evaluatedBefore = toDbDate(addDays(today, -14));
-  const inReviewBefore = toDbDate(addDays(today, -7));
 
-  // Scoped to studentId: { in: studentIds } -- without it, this rewrites and
-  // locks any non-seed student's reports too, and the next seed run's wipe
-  // (which only deletes seed-owned rows) hits a mentor-record FK still
-  // pointing at a report this update just moved to EVALUATED.
-  await prisma.dailyReport.updateMany({
+  // Records BEFORE the EVALUATED sweep, which is the order a mentor works
+  // in: record the day, and finishing it is what locks it (ADR-0029).
+  // Writing them afterwards -- as this did until 2026-09-28 -- now throws
+  // LockedDayError, because mentor-record-repo enforces FR-20 for the
+  // mentor's own record too. That the seed tripped over it is the point:
+  // the seed was reproducing a sequence the application cannot perform.
+  const toEvaluate = await prisma.dailyReport.findMany({
     where: { reportDate: { lt: evaluatedBefore }, studentId: { in: studentIds } },
-    data: { status: "EVALUATED", reviewedById: mentor1.id, evaluatedAt: now, inReviewAt: now },
   });
-  await prisma.dailyReport.updateMany({
-    where: { reportDate: { lt: inReviewBefore, gte: evaluatedBefore }, studentId: { in: studentIds } },
-    data: { status: "IN_REVIEW", reviewedById: mentor1.id, inReviewAt: now },
-  });
-
-  const evaluated = await prisma.dailyReport.findMany({
-    where: { status: "EVALUATED", studentId: { in: studentIds } },
-  });
-  for (const report of evaluated) {
+  for (const report of toEvaluate) {
     const reportDate = fromDbDate(report.reportDate);
     if (!isWeekday(reportDate)) continue;
     await mentorRecords.upsert({
@@ -267,6 +259,20 @@ export async function runSeed(prisma: PrismaClient, now: Date): Promise<void> {
       recordedById: mentor1.id,
     });
   }
+
+  // Scoped to studentId: { in: studentIds } -- without it, this rewrites and
+  // locks any non-seed student's reports too, and the next seed run's wipe
+  // (which only deletes seed-owned rows) hits a mentor-record FK still
+  // pointing at a report this update just moved to EVALUATED.
+  await prisma.dailyReport.updateMany({
+    where: { reportDate: { lt: evaluatedBefore }, studentId: { in: studentIds } },
+    data: { status: "EVALUATED", reviewedById: mentor1.id, evaluatedAt: now, inReviewAt: now },
+  });
+  // No second updateMany for the IN_REVIEW band: every report is born
+  // IN_REVIEW with inReviewAt stamped at submission, so anything this
+  // EVALUATED sweep did not catch is already in the right state. Forcing it
+  // would also set reviewedById on a report no mentor has acted on yet,
+  // which would read as "someone reviewed this" when nobody has.
 
   // ── archive + cycles ─────────────────────────────────────────────────────
   const archived = SEED_STUDENTS.find((s) => s.kind === "archived")!;
