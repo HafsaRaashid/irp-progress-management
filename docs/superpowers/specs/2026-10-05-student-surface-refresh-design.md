@@ -122,7 +122,7 @@ Four tokens change. The two weak variants are re-derived per §3.4's instruction
 
 | Token | From | To | OKLCH |
 |---|---|---|---|
-| light `--primary` | `#3c4ba2` | **`#035baa`** | `0.472 0.146 253.4` |
+| light `--primary` | `#3c4ba2` | **`#045aa9`** | `0.469 0.145 253.6` |
 | light `--primary-weak` | `#e9eefe` | **`#e5f0fd`** | `0.950 0.022 253.4` |
 | dark `--primary` | `#8a9ff0` | **`#6da8ee`** | `0.720 0.120 253.5` |
 | dark `--primary-weak` | `#262c45` | **`#1d2f44`** | `0.300 0.046 253.4` |
@@ -131,12 +131,20 @@ Measured, both themes:
 
 | Pair | Light | Dark | Floor |
 |---|---|---|---|
-| `--primary` on `--bg` | 6.82:1 | 7.57:1 | 4.5 |
-| `--surface` on `--primary` (`.btn-primary` label) | 6.37:1 | 6.74:1 | 4.5 |
-| `--primary` on `--primary-weak` (active nav, chip) | 5.91:1 | 5.50:1 | 4.5 |
+| `--primary` on `--bg` | 6.91:1 | 7.57:1 | 4.5 |
+| `--surface` on `--primary` (`.btn-primary` label) | 6.45:1 | 6.74:1 | 4.5 |
+| `--primary` on `--primary-weak` (active nav, chip) | 5.99:1 | 5.50:1 | 4.5 |
 
-Hue 253.4° is clear of both reserved bands (20–70°, 140–170°), in sRGB gamut, and **identical in
-both themes** — matching the existing system, where light and dark primaries share hue 272.
+Hue ~253° is clear of both reserved bands (20–70°, 140–170°), in sRGB gamut, and the **same hue in
+both themes** (253.6 / 253.5, within rounding) — matching the existing system, where light and dark
+primaries share hue 272.
+
+**`#045aa9`, not `#035baa`.** The two differ by ΔL 0.003 and ΔH 0.27° — perceptually the same colour,
+0.09:1 apart in contrast — but only one of them supports the claim made for it. `#045aa9` is the
+**mark's** largest cluster at 15.2%; `#035baa` is the **lockup's** third cluster at 9.5%, behind the
+green wordmark's 20.1%. An earlier draft of this spec shipped the lockup value while citing the
+mark's provenance for it. Recorded because the two are indistinguishable by eye, so nothing but this
+note would stop the swap being made back.
 
 **Rejected** (ADR-0030 records these): the bright cerulean `#1C8FD1` — fails the text floor at
 3.56:1; the logo's own mid-blue `#0188c5` — 3.94:1, same defect; keeping the placeholder indigo —
