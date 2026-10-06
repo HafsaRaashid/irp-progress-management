@@ -605,6 +605,19 @@ describe("createAzureOpenAiEvaluator", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("throws AiProviderUnavailableError (not the raw network error) when fetchImpl itself rejects", async () => {
+    // Whole-branch review finding (Task 3): a genuine network failure --
+    // DNS, connection refused, timeout -- is the provider being
+    // unreachable, not a malformed response. It must come out typed as
+    // AiProviderUnavailableError, same as the config-undefined case, not
+    // leak as the raw Error fetchImpl rejected with.
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    const client = createAzureOpenAiEvaluator(CONFIG, fetchImpl as unknown as typeof fetch);
+
+    await expect(client.evaluate(PROMPT)).rejects.toBeInstanceOf(AiProviderUnavailableError);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("throws AiResponseInvalidError when a criterion is out of range, without retrying a well-formed-but-wrong response twice unnecessarily", async () => {
     const outOfRange = {
       choices: [{ message: { content: JSON.stringify({
@@ -686,8 +699,10 @@ const RESPONSE_SCHEMA = {
 } as const;
 
 /**
- * // ASSUMPTION: O-5 — Azure OpenAI is the chosen provider (spec §0/D3), kept
- * inside this repo's own Azure tenant rather than a separate third-party one.
+ * Azure OpenAI is the chosen provider (spec §0/D3), kept inside this repo's
+ * own Azure tenant rather than a separate third-party one. The O-5 marker
+ * itself lives on `evaluate()`'s actual `fetchImpl` call below, not here —
+ * this function builds a prompt string, it doesn't call anything.
  */
 function systemPrompt(): string {
   return [
@@ -748,8 +763,7 @@ export function createAzureOpenAiEvaluator(
     async evaluate(prompt) {
       if (config === undefined) {
         throw new AiProviderUnavailableError(
-          "No AI provider is configured (AZURE_OPENAI_ENDPOINT/API_KEY/DEPLOYMENT). " +
-          "// ASSUMPTION: O-5 -- see docs/superpowers/specs/2026-10-06-ai-monthly-evaluation-design.md §0.",
+          "No AI provider is configured (AZURE_OPENAI_ENDPOINT/API_KEY/DEPLOYMENT).",
         );
       }
 
@@ -762,9 +776,13 @@ export function createAzureOpenAiEvaluator(
         response_format: RESPONSE_SCHEMA,
       });
 
-      let lastError: unknown;
+      let lastError: Error = new AiProviderUnavailableError("The AI provider did not respond.");
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
+          // ASSUMPTION: O-5 -- this is the one call in the whole plan that
+          // sends a student's real submission data to a third-party AI
+          // provider, ahead of the project's required leadership sign-off.
+          // See docs/superpowers/specs/2026-10-06-ai-monthly-evaluation-design.md §0.
           const res = await fetchImpl(buildUrl(config), {
             method: "POST",
             headers: { "content-type": "application/json", "api-key": config.apiKey },
@@ -779,10 +797,20 @@ export function createAzureOpenAiEvaluator(
           const modelVersion = (json as { model?: string }).model ?? config.deployment;
           return { result, modelVersion };
         } catch (err) {
-          lastError = err instanceof Error ? err : new AiResponseInvalidError(String(err));
+          // A rejected fetchImpl (DNS failure, connection refused, timeout)
+          // is the provider being unreachable, not a malformed response --
+          // AiProviderUnavailableError (503), not AiResponseInvalidError
+          // (502). A thrown AiResponseInvalidError from parseAndValidate
+          // above is re-classified as itself on purpose: `instanceof
+          // AiResponseInvalidError` wins over the network-failure default.
+          lastError = err instanceof AiResponseInvalidError
+            ? err
+            : new AiProviderUnavailableError(
+                `Azure OpenAI request failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
         }
       }
-      throw lastError instanceof Error ? lastError : new AiResponseInvalidError("Unknown AI client failure.");
+      throw lastError;
     },
   };
 }
