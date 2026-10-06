@@ -75,6 +75,19 @@ describe("createAzureOpenAiEvaluator", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("throws AiProviderUnavailableError (not the raw network error) when fetchImpl itself rejects", async () => {
+    // Whole-branch review finding (Task 3): a genuine network failure --
+    // DNS, connection refused, timeout -- is the provider being
+    // unreachable, not a malformed response. It must come out typed as
+    // AiProviderUnavailableError, same as the config-undefined case, not
+    // leak as the raw Error fetchImpl rejected with.
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    const client = createAzureOpenAiEvaluator(CONFIG, fetchImpl as unknown as typeof fetch);
+
+    await expect(client.evaluate(PROMPT)).rejects.toBeInstanceOf(AiProviderUnavailableError);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("throws AiResponseInvalidError when a criterion is out of range, without retrying a well-formed-but-wrong response twice unnecessarily", async () => {
     const outOfRange = {
       choices: [{ message: { content: JSON.stringify({
