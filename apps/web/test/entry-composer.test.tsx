@@ -5,17 +5,20 @@ import { EntryComposer } from "@/app/(app)/entry-composer";
 // vi.mock's factory is hoisted above this file's other statements, so it
 // cannot close over a plain top-level `const` -- vi.hoisted() runs first and
 // hands back a reference the factory can use safely.
-const { submitEntry } = vi.hoisted(() => ({ submitEntry: vi.fn() }));
+const { submitEntry, markAbsent } = vi.hoisted(() => ({
+  submitEntry: vi.fn(),
+  markAbsent: vi.fn(),
+}));
 
 // entry-composer.tsx imports submitEntry via the relative specifier
 // "./entry-actions". Vitest's mock registry keys by resolved absolute
 // module, so mocking through the "@/" alias here replaces the same file
 // regardless of which specifier each side spells it with.
-vi.mock("@/app/(app)/entry-actions", () => ({ submitEntry }));
+vi.mock("@/app/(app)/entry-actions", () => ({ submitEntry, markAbsent }));
 
 describe("EntryComposer", () => {
   it("offers only the given target dates as options, most recent first", () => {
-    render(<EntryComposer targetDates={["2026-07-31", "2026-07-30"]} />);
+    render(<EntryComposer targets={[{ date: "2026-07-31", canBeAbsent: true }, { date: "2026-07-30", canBeAbsent: true }]} />);
     const select = screen.getByLabelText("Entry date");
     const options = Array.from(select.querySelectorAll("option")).map((o) => o.getAttribute("value"));
     expect(options).toEqual(["2026-07-31", "2026-07-30"]);
@@ -26,12 +29,12 @@ describe("EntryComposer", () => {
     // OLDEST target, since targetDates is most-recent-first), so the
     // untouched fast path filed today's work against yesterday's date and
     // the API flagged it Late.
-    render(<EntryComposer targetDates={["2026-07-31", "2026-07-30"]} />);
+    render(<EntryComposer targets={[{ date: "2026-07-31", canBeAbsent: true }, { date: "2026-07-30", canBeAbsent: true }]} />);
     expect(screen.getByLabelText("Entry date")).toHaveValue("2026-07-31");
   });
 
   it("renders no error before any submission", () => {
-    render(<EntryComposer targetDates={["2026-07-31"]} />);
+    render(<EntryComposer targets={[{ date: "2026-07-31", canBeAbsent: true }]} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -41,13 +44,13 @@ describe("EntryComposer", () => {
     // forgot to narrow on it would greet a student with "Submitted." before
     // they had typed anything. Every other test in this file would stay
     // green while that happened.
-    render(<EntryComposer targetDates={["2026-07-31"]} />);
+    render(<EntryComposer targets={[{ date: "2026-07-31", canBeAbsent: true }]} />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("surfaces the action's error message as a role=alert on failure", async () => {
     submitEntry.mockResolvedValueOnce({ error: "The entry was not accepted." });
-    render(<EntryComposer targetDates={["2026-07-31"]} />);
+    render(<EntryComposer targets={[{ date: "2026-07-31", canBeAbsent: true }]} />);
 
     fireEvent.change(screen.getByLabelText("Entry text"), {
       target: { value: "Worked on the composer." },
@@ -64,7 +67,7 @@ describe("EntryComposer", () => {
     // design-system.md section 11 requires: an action keeps its name
     // through the whole flow.
     submitEntry.mockResolvedValueOnce({ ok: true });
-    render(<EntryComposer targetDates={["2026-07-31"]} />);
+    render(<EntryComposer targets={[{ date: "2026-07-31", canBeAbsent: true }]} />);
 
     fireEvent.change(screen.getByLabelText("Entry text"), {
       target: { value: "Worked on the composer." },
@@ -94,7 +97,7 @@ describe("EntryComposer", () => {
     // confirmation reads as a FAILED submit -- the exact ambiguity this
     // task exists to remove.
     submitEntry.mockResolvedValueOnce({ ok: true });
-    render(<EntryComposer targetDates={["2026-07-31"]} />);
+    render(<EntryComposer targets={[{ date: "2026-07-31", canBeAbsent: true }]} />);
 
     const textarea = screen.getByLabelText("Entry text");
     fireEvent.change(textarea, { target: { value: "Worked on the composer." } });
@@ -121,7 +124,7 @@ describe("EntryComposer", () => {
       error: "The submission window for 2026-01-05 is closed.",
       body: "A full afternoon of work I do not want to retype.",
     });
-    render(<EntryComposer targetDates={["2026-07-31"]} />);
+    render(<EntryComposer targets={[{ date: "2026-07-31", canBeAbsent: true }]} />);
 
     const textarea = screen.getByLabelText("Entry text");
     fireEvent.change(textarea, {
@@ -138,7 +141,7 @@ describe("EntryComposer", () => {
 
   it("submits the selected date and body through the action", async () => {
     submitEntry.mockResolvedValueOnce({ ok: true });
-    render(<EntryComposer targetDates={["2026-07-31"]} />);
+    render(<EntryComposer targets={[{ date: "2026-07-31", canBeAbsent: true }]} />);
 
     fireEvent.change(screen.getByLabelText("Entry text"), {
       target: { value: "Worked on the composer." },
@@ -150,5 +153,183 @@ describe("EntryComposer", () => {
     const [, formData] = submitEntry.mock.calls[0] as [unknown, FormData];
     expect(formData.get("entryDate")).toBe("2026-07-31");
     expect(formData.get("body")).toBe("Worked on the composer.");
+  });
+
+  /**
+   * Marking absent moved here from the day cards, because this control
+   * already owns the date picker and "submit an update" / "I was absent" are
+   * two answers to the same question.
+   */
+  describe("marking absent", () => {
+    const targets = [
+      { date: "2026-07-31", canBeAbsent: true },
+      { date: "2026-08-01", canBeAbsent: false },
+    ];
+
+    it("offers Mark absent as a quiet button beside Submit, not a second competing primary", () => {
+      render(<EntryComposer targets={targets} />);
+      expect(screen.queryByRole("button", { name: "Record absence" })).not.toBeInTheDocument();
+    });
+
+    it("reveals a reason field capped at 500 chars, matching AbsenceCreate", () => {
+      render(<EntryComposer targets={targets} />);
+      fireEvent.click(screen.getByRole("button", { name: "Mark absent" }));
+      const reason = screen.getByLabelText("Absence reason for 2026-07-31");
+      expect(reason).toHaveAttribute("maxlength", "500");
+      expect(screen.getByRole("button", { name: "Record absence" })).toBeInTheDocument();
+    });
+
+    /**
+     * The glossary is explicit: absence does not apply to a weekend, because
+     * there is nothing to be absent from. The submission window DOES carry
+     * Saturday and Sunday on a Monday, so this is a real selection a student
+     * can make — and the control disappears rather than letting the API
+     * reject it, since it is not a mistake the student made.
+     */
+    it("hides the absence path entirely for a day that cannot carry one", () => {
+      render(<EntryComposer targets={[{ date: "2026-08-01", canBeAbsent: false }]} />);
+      expect(screen.queryByRole("button", { name: "Mark absent" })).not.toBeInTheDocument();
+    });
+
+    it("drops an open absence prompt when the date changes, so a typed reason cannot be filed against another day", () => {
+      render(<EntryComposer targets={targets} />);
+      fireEvent.click(screen.getByRole("button", { name: "Mark absent" }));
+      expect(screen.getByLabelText("Absence reason for 2026-07-31")).toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText("Entry date"), { target: { value: "2026-08-01" } });
+
+      expect(screen.queryByLabelText(/Absence reason/)).not.toBeInTheDocument();
+    });
+
+    it("submits the selected date with the reason", async () => {
+      markAbsent.mockResolvedValueOnce({ ok: true, reason: "Medical appointment" });
+      render(<EntryComposer targets={targets} />);
+      fireEvent.click(screen.getByRole("button", { name: "Mark absent" }));
+      fireEvent.change(screen.getByLabelText("Absence reason for 2026-07-31"), {
+        target: { value: "Medical appointment" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Record absence" }));
+
+      await screen.findByRole("button", { name: "Record absence" });
+      expect(markAbsent).toHaveBeenCalled();
+      const [, formData] = markAbsent.mock.calls[0] as [unknown, FormData];
+      expect(formData.get("date")).toBe("2026-07-31");
+      expect(formData.get("reason")).toBe("Medical appointment");
+    });
+
+    it("surfaces markAbsent's error as role=alert", async () => {
+      markAbsent.mockResolvedValueOnce({ error: "The absence was not recorded." });
+      render(<EntryComposer targets={targets} />);
+      fireEvent.click(screen.getByRole("button", { name: "Mark absent" }));
+      fireEvent.change(screen.getByLabelText("Absence reason for 2026-07-31"), {
+        target: { value: "Sick" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Record absence" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("The absence was not recorded.");
+    });
+
+    /**
+     * This was a silent success until the control moved. While marking lived
+     * inside the day card, recording an absence visibly rewrote the panel the
+     * button sat in. From the composer it does not — the result lands in a
+     * card in another column — so the student clicked and saw nothing happen
+     * where they were looking. Same defect as submitEntry's, reintroduced by
+     * relocating the control.
+     */
+    it("confirms what it recorded, naming the reason back", async () => {
+      markAbsent.mockResolvedValueOnce({ ok: true, reason: "Medical appointment" });
+      render(<EntryComposer targets={targets} />);
+      fireEvent.click(screen.getByRole("button", { name: "Mark absent" }));
+      fireEvent.change(screen.getByLabelText("Absence reason for 2026-07-31"), {
+        target: { value: "Medical appointment" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Record absence" }));
+
+      const status = await screen.findByRole("status");
+      expect(status).toHaveTextContent("Marked absent");
+      expect(status).toHaveTextContent("Medical appointment");
+    });
+
+    it("renders no absence confirmation before anything is recorded", () => {
+      render(<EntryComposer targets={targets} />);
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * "Time spent in meetings" (FR-17, ADR-0033) -- optional, numeric, never
+   * required. A student who skips it must submit exactly as before; nothing
+   * here should ever block a submission.
+   */
+  describe("meeting minutes", () => {
+    const targets = [{ date: "2026-07-31", canBeAbsent: true }];
+
+    it("offers an optional minutes field, not required to submit", () => {
+      render(<EntryComposer targets={targets} />);
+      const field = screen.getByLabelText("Minutes in meetings (optional)");
+      expect(field).not.toBeRequired();
+      expect(field).toHaveAttribute("type", "number");
+      // The server caps at 480 (ADR-0033); mirrored here so a student gets
+      // immediate feedback rather than a round trip to learn the bound.
+      expect(field).toHaveAttribute("min", "0");
+      expect(field).toHaveAttribute("max", "480");
+    });
+
+    it("submits unset as nothing, never as the literal string '0' or empty", async () => {
+      submitEntry.mockResolvedValueOnce({ ok: true });
+      render(<EntryComposer targets={targets} />);
+      fireEvent.change(screen.getByLabelText("Entry text"), { target: { value: "Worked on the composer." } });
+      fireEvent.click(screen.getByRole("button", { name: "Submit update" }));
+
+      await screen.findByRole("status");
+      // .at(-1), not [0]: submitEntry is a SHARED mock across every test in
+      // this file (no per-test reset), so by the time this test runs,
+      // calls[0] is some EARLIER test's invocation, not this one's.
+      const [, formData] = submitEntry.mock.calls.at(-1) as [unknown, FormData];
+      // An empty number input reports "" via FormData -- the action (not
+      // this component) is responsible for turning that into "omit the
+      // field", but the composer must hand it over as empty rather than
+      // inventing a 0 the student never typed.
+      expect(formData.get("meetingMinutes")).toBe("");
+    });
+
+    it("passes a typed value through to the action", async () => {
+      submitEntry.mockResolvedValueOnce({ ok: true });
+      render(<EntryComposer targets={targets} />);
+      fireEvent.change(screen.getByLabelText("Entry text"), { target: { value: "Worked on the composer." } });
+      fireEvent.change(screen.getByLabelText("Minutes in meetings (optional)"), { target: { value: "45" } });
+      fireEvent.click(screen.getByRole("button", { name: "Submit update" }));
+
+      await screen.findByRole("status");
+      // .at(-1), not [0]: submitEntry is a SHARED mock across every test in
+      // this file (no per-test reset), so by the time this test runs,
+      // calls[0] is some EARLIER test's invocation, not this one's.
+      const [, formData] = submitEntry.mock.calls.at(-1) as [unknown, FormData];
+      expect(formData.get("meetingMinutes")).toBe("45");
+    });
+
+    /**
+     * The same text-loss bug Task 4b fixed for the body must not reopen here:
+     * a rejected submission has to hand BOTH fields back, or a student who
+     * filled in meeting minutes loses that half silently while the body is
+     * correctly restored beside it.
+     */
+    it("re-seeds minutes (not just the body) after a rejected submission", async () => {
+      submitEntry.mockResolvedValueOnce({
+        error: "The submission window is closed.",
+        body: "Worked on the composer.",
+        meetingMinutes: 45,
+      });
+      render(<EntryComposer targets={targets} />);
+
+      fireEvent.change(screen.getByLabelText("Entry text"), { target: { value: "Worked on the composer." } });
+      fireEvent.change(screen.getByLabelText("Minutes in meetings (optional)"), { target: { value: "45" } });
+      fireEvent.click(screen.getByRole("button", { name: "Submit update" }));
+
+      await screen.findByRole("alert");
+      expect(screen.getByLabelText("Entry text")).toHaveValue("Worked on the composer.");
+      expect(screen.getByLabelText("Minutes in meetings (optional)")).toHaveValue(45);
+    });
   });
 });
