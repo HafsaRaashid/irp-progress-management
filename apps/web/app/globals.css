@@ -1,9 +1,21 @@
 @import "tailwindcss";
 
-/* Verified light theme. docs/design-system.md §3.1 — 35 pairs pass WCAG AA,
-   every token in sRGB gamut. Do not substitute values.
-   --primary is the Bistec slot: a placeholder indigo until the brand hex
-   arrives. Any replacement must avoid hue 20-70 (missed/late) and 140-170 (ok). */
+/* Verified light theme. docs/design-system.md §3.1 — every rendered pair is
+   gated by test/theme-tokens.test.ts on every run, both themes. Every token is
+   in sRGB gamut. Do not substitute values.
+
+   --primary is the Bistec slot, FILLED (ADR-0030): #045aa9,
+   oklch(0.469 0.145 253.6), sampled from assets/hearts-academy-mark.png — its
+   largest single cluster, 15.2% of the mark's opaque pixels.
+
+   It is drawn as TEXT as well as fill — .nav-item[data-active],
+   .chip[aria-current], .text-link:hover, and --st-review — so it carries 4.5:1,
+   not 3:1. That is why the logo's brighter mid-blue could not be used: #0188c5
+   measures 3.94:1 on white and the eyeballed #1C8FD1 measures 3.56:1. Both are
+   in the asset; neither is legible as ink.
+
+   Any future replacement must clear hue 20-70 (missed/late) and 140-170 (ok),
+   and must keep the gate green. */
 :root {
   /* Tells the browser to render NATIVE controls (the type="date" calendar
      indicator, scrollbars, select dropdowns) in a light-aware palette. Tokens
@@ -26,8 +38,8 @@
   --line-strong: #898c96;
   --ink: #1b1f2a;
   --ink-muted: #5f636e;
-  --primary: #3c4ba2;
-  --primary-weak: #e9eefe;
+  --primary: #045aa9;
+  --primary-weak: #e5f0fd;
 
   --st-ok: #267b4c;
   --st-late: #9f5c0c;
@@ -85,8 +97,8 @@
     --line-strong: #656974;
     --ink: #f2f3f6;
     --ink-muted: #a7aab4;
-    --primary: #8a9ff0;
-    --primary-weak: #262c45;
+    --primary: #6da8ee;
+    --primary-weak: #1d2f44;
     --st-ok: #65c98c;
     --st-late: #eeac53;
     --st-absent: #9a9eaa;
@@ -108,8 +120,8 @@
   --line-strong: #656974;
   --ink: #f2f3f6;
   --ink-muted: #a7aab4;
-  --primary: #8a9ff0;
-  --primary-weak: #262c45;
+  --primary: #6da8ee;
+  --primary-weak: #1d2f44;
   --st-ok: #65c98c;
   --st-late: #eeac53;
   --st-absent: #9a9eaa;

@@ -49,7 +49,10 @@ Recorded so these don't get reintroduced later as "improvements."
 OKLCH throughout. Strategy: **restrained** — tinted neutrals plus one accent, accent ≤10% of surface.
 
 Every pair below was verified with a WCAG contrast script against the sRGB conversion.
-**35 pairs across both themes pass; every token is in gamut.**
+**Every token is in gamut, and every pair the interface actually renders is gated on every
+test run — 30 pairs per theme, both themes, in `apps/web/test/theme-tokens.test.ts`.** That gate
+replaced a one-off script whose result ("35 pairs pass") nothing re-checked; it is proven red
+against a deliberately broken token, not merely asserted.
 
 ### 3.1 Light (default)
 
@@ -62,8 +65,8 @@ Every pair below was verified with a WCAG contrast script against the sRGB conve
 | `--line-strong` | `oklch(0.64 0.015 272)` | `#898c96` | **Control borders** — inputs, selects, checkboxes. Meets 1.4.11 at 3.37:1. |
 | `--ink` | `oklch(0.24 0.022 272)` | `#1b1f2a` | Primary text — 16.48:1 |
 | `--ink-muted` | `oklch(0.50 0.018 272)` | `#5f636e` | Labels, secondary text, placeholders — 6.01:1 |
-| `--primary` | `oklch(0.45 0.14 272)` | `#3c4ba2` | **Bistec slot.** Indigo ink. Primary actions, selection, focus — 7.71:1 |
-| `--primary-weak` | `oklch(0.95 0.022 272)` | `#e9eefe` | Selected rows, active nav, primary-tinted fills. |
+| `--primary` | `oklch(0.469 0.145 253.6)` | `#045aa9` | **Bistec slot — filled** (ADR-0030). Cerulean ink, sampled from the brand mark. Primary actions, selection, focus — 6.91:1 |
+| `--primary-weak` | `oklch(0.95 0.022 253.4)` | `#e5f0fd` | Selected rows, active nav, primary-tinted fills. |
 | `--brand-card` | — | `#ffffff` | The card behind the Bistec Hearts Academy logo. **Theme-invariant** — see below. |
 
 `--brand-card` is the only token that is **identical in light and dark**, by never being
@@ -136,8 +139,8 @@ toward indigo, they do not warm.
 | `--line-strong` | `oklch(0.52 0.018 272)` | `#656974` |
 | `--ink` | `oklch(0.965 0.004 272)` | `#f2f3f6` |
 | `--ink-muted` | `oklch(0.74 0.014 272)` | `#a7aab4` |
-| `--primary` | `oklch(0.72 0.12 272)` | `#8a9ff0` |
-| `--primary-weak` | `oklch(0.30 0.045 272)` | `#262c45` |
+| `--primary` | `oklch(0.72 0.12 253.5)` | `#6da8ee` |
+| `--primary-weak` | `oklch(0.30 0.046 253.4)` | `#1d2f44` |
 
 Status colours are **re-tuned, not reused** — see §3.2.
 
@@ -171,12 +174,29 @@ Dark is user-reachable as of ADR-0021, selected by `data-theme` on `<html>`:
 
 ### 3.4 The Bistec slot
 
-`--primary` is a placeholder pending the actual brand value. To swap: replace the single
-`--primary` token, re-derive `--primary-weak` at roughly `L 0.95 / C 0.022` on the same hue,
-and re-run the contrast check. Nothing else in the system references a brand colour directly.
+**The slot is filled** — `#045aa9`, `oklch(0.469 0.145 253.6)` ([ADR-0030](adr/0030-bistec-cerulean-as-the-brand-colour.md)).
+It is sampled from `apps/web/assets/hearts-academy-mark.png`: its largest single cluster, 15.2%
+of the mark's opaque pixels. The swap procedure is unchanged and still applies to any future
+change: replace the single `--primary` token, re-derive `--primary-weak` at roughly
+`L 0.95 / C 0.022` on the same hue, and re-run the gate. Nothing else in the system references
+a brand colour directly.
 
 **Constraint on any replacement:** the hue must stay clear of 20–70° (red/amber — reserved
 for `missed`/`late`) and 140–170° (green — reserved for `ok`).
+
+**And it must clear 4.5:1, not 3:1.** `--primary` is drawn as **text**, not only as a fill —
+`.nav-item[data-active]`, `.chip[aria-current]`, `.text-link:hover`, and `--st-review`. This is
+the constraint that is easy to miss and it is what ruled out the obvious choice: the heart is a
+*gradient* running 253°→223°, and its brighter mid-blue `#0188c5` measures **3.94:1** on white.
+A by-eye sample of the same region, `#1C8FD1`, measures **3.56:1**. Both are genuinely in the
+asset; neither is legible as ink. The gradient's deep end is what passes, which is why the brand
+colour is the dark cerulean rather than the bright one the logo reads as at a glance.
+
+**The two brand assets are sampled separately and their cluster shares are not interchangeable.**
+`hearts-academy-mark.png` and `hearts-academy-lockup.png` have different compositions — the
+lockup includes the green wordmark at 20.1%, which the mark does not contain at all. Quoting a
+share from one against a hex from the other has already produced two wrong provenance claims
+during this slice. Name the file whenever you cite a percentage.
 
 ---
 
@@ -464,7 +484,6 @@ Non-negotiable, verified rather than assumed.
 
 | # | Item | Effect |
 |---|---|---|
-| — | **Bistec brand colour** | `--primary` is a placeholder. One-token swap; see §3.4 for hue constraints. |
 | — | **§6's topbar batch switcher is not built** | `Batch 12 ▾` would have appeared in the §6 frame with no data behind it: `User` in `spec/openapi.yaml` carries no batch, and a mentor holds several, so one name in a global slot would be wrong for the primary audience. Batch selection is per-page instead, via the Roster and Cycles chips. Revisit only if a global batch context is ever genuinely needed; it would need a spec change first. |
 | O-6 | Rubric criteria wording | Blocks the evaluation surface layout — five criteria need real labels before that screen is designed. |
 | O-7 | Absence/lateness penalty | `--st-absent` is neutral on the stated assumption. If leadership rules that absence penalises the score, this token and its copy change. |
