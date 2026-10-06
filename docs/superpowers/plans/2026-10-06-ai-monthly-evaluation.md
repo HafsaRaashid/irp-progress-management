@@ -894,8 +894,17 @@ function deps(overrides: Record<string, unknown> = {}) {
     evaluationRepo: {
       upsertCycle: vi.fn().mockResolvedValue("cycle-1"),
       findEvaluation: vi.fn().mockResolvedValue(null),
+      // Required by the EvaluationRepo interface even though most tests
+      // below never call override() -- TS infers one fixed shape for every
+      // deps() call site regardless of which runtime branch exercises it,
+      // so omitting this breaks typecheck everywhere deps() is used, not
+      // just the override tests.
+      findEvaluationById: vi.fn().mockResolvedValue(null),
       createEvaluation: vi.fn().mockImplementation((input: Record<string, unknown>) =>
-        Promise.resolve({ id: "eval-1", cycleSeq: 1, ...input, performanceIndex: String(input.performanceIndex) })),
+        Promise.resolve({
+          id: "eval-1", cycleSeq: 1, createdAt: new Date(), ...input,
+          performanceIndex: String(input.performanceIndex),
+        })),
       findOverride: vi.fn().mockResolvedValue(null),
       createOverride: vi.fn(),
       ...((overrides.evaluationRepo as object) ?? {}),
@@ -1010,12 +1019,12 @@ Expected: FAIL — module does not exist.
 
 ```typescript
 // apps/api/src/services/evaluation-service.ts
-import { cycleContaining, cycleFor, compareDates, firstEvaluatedCycleStart, shiftCycle, toProgrammeDate, type CycleBounds } from "@irp/core";
+import { cycleContaining, compareDates, firstEvaluatedCycleStart, shiftCycle, toProgrammeDate, type CycleBounds } from "@irp/core";
 import type { BatchRepo } from "../db/batch-repo.js";
 import type { EntryRepo } from "../db/entry-repo.js";
 import type { MentorRecordRepo } from "../db/mentor-record-repo.js";
 import type { AbsenceRepo } from "../db/absence-repo.js";
-import type { EvaluationRepo } from "../db/evaluation-repo.js";
+import type { EvaluationRepo, EvaluationRecord } from "../db/evaluation-repo.js";
 import type { UserRepo } from "../db/user-repo.js";
 import type { EvaluationAiClient } from "./evaluation-ai-client.js";
 import {
@@ -1068,22 +1077,24 @@ function resolveBounds(batchStartDate: CycleBounds["start"], seq: number): Cycle
 }
 
 export function createEvaluationService(deps: EvaluationServiceDeps): EvaluationService {
-  async function toView(
-    evalRow: { id: string; studentId: string; cycleSeq: number } & Record<string, unknown>,
-  ): Promise<EvaluationView> {
+  // Typed as EvaluationRecord directly, not a structural `& Record<string,
+  // unknown>` shape -- a named interface has no implicit index signature,
+  // so every real call site (passing an actual EvaluationRecord) failed
+  // typecheck against the looser shape.
+  async function toView(evalRow: EvaluationRecord): Promise<EvaluationView> {
     const override = await deps.evaluationRepo.findOverride(evalRow.id);
     return {
       id: evalRow.id,
       studentId: evalRow.studentId,
       cycleSeq: evalRow.cycleSeq,
-      attendance: evalRow.attendance as number,
-      taskCompletion: evalRow.taskCompletion as number,
-      contributionInitiative: evalRow.contributionInitiative as number,
-      effortTime: evalRow.effortTime as number,
-      mentorEvaluation: evalRow.mentorEvaluation as number,
+      attendance: evalRow.attendance,
+      taskCompletion: evalRow.taskCompletion,
+      contributionInitiative: evalRow.contributionInitiative,
+      effortTime: evalRow.effortTime,
+      mentorEvaluation: evalRow.mentorEvaluation,
       performanceIndex: Number(evalRow.performanceIndex),
-      summary: evalRow.summary as string,
-      modelVersion: evalRow.modelVersion as string,
+      summary: evalRow.summary,
+      modelVersion: evalRow.modelVersion,
       override: override === null ? null : {
         newScore: Number(override.newScore), originalScore: Number(override.originalScore), reason: override.reason,
       },
