@@ -539,6 +539,62 @@ git commit -m "fix(web): confirm a successful submission instead of succeeding s
 
 ---
 
+### Task 4b: A rejected submission must not discard what the student wrote
+
+**Found during Task 4, not planned.** Pre-existing, independently confirmed three times — twice in a
+real browser session against the live API, once under Vitest.
+
+React 19 resets an uncontrolled `<form action={fn}>` when the action **completes**, not when it
+*succeeds*. So a submission the API rejects clears the textarea too: the student reads *"The
+submission window for 2026-01-05 is closed"* and finds the update they just wrote has been thrown
+away. They must retype a day's work — plausibly against a grace-window deadline, which is exactly
+when a submission is most likely to be rejected and the text most costly to lose.
+
+This is the opposite of Task 4's purpose. Task 4 made success legible; this leaves failure
+destructive.
+
+**Deliberately not fixed in Task 4, and deliberately untested there.** A test asserting "the body is
+discarded on failure" would enshrine the defect as sanctioned behaviour and make the fix look like a
+regression. There is no test pinning this in either direction — that is intentional, and this task
+closes it.
+
+**Files:** `apps/web/app/(app)/entry-actions.ts`, `entry-composer.tsx`, `test/entry-composer.test.tsx`
+
+- [ ] **Step 1: Write the failing test**
+
+A rejected submit keeps the typed body in the textarea, and still shows the error. It fails today
+with `expected '' to be '<the body>'`.
+
+- [ ] **Step 2: Carry the body back on the error path**
+
+`submitEntry` returns `{ error, body }` — the rejected text — and the composer feeds it to the
+textarea's `defaultValue`. This works *with* React's reset rather than against it: the field is
+re-seeded on the next render instead of a `useEffect` racing the reset to put it back.
+
+**Do not reach for a controlled textarea.** That makes every keystroke a state update on the
+student's primary input, and the success path — which resets correctly today — would then need
+manual clearing, so one real fix would create a second thing to get wrong.
+
+**Keep the success path exactly as it is.** It was measured in Task 4 and works.
+
+- [ ] **Step 3: Confirm both paths, in a browser, not only in jsdom**
+
+Failure keeps the text; success still clears it. Task 4's observation was made in a real signed-in
+session for a reason — jsdom and React's real form handling have already disagreed once in this
+codebase.
+
+- [ ] **Step 4: Full verification and commit**
+
+```bash
+pnpm --filter @irp/web test
+pnpm typecheck
+pnpm lint
+$env:AUTH_DEV_BYPASS = "false"; pnpm --filter @irp/web build
+git commit -m "fix(web): keep a rejected entry's text instead of discarding it (FR-29)"
+```
+
+---
+
 ### Task 5: `EmptyState`'s opt-in slots, and the copy fixes
 
 The first opt-in capability, plus three copy corrections. Grouped because all three are small, land in adjacent files, and the empty-state copy and the empty-state component are the same sentence from a reader's point of view.
