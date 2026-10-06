@@ -38,8 +38,16 @@ export function EntryComposer({ targetDates }: { targetDates: string[] }) {
         aria-label="Entry text"
         className="control"
       />
-      {state !== null && (
+      {/* Two narrowed branches rather than one `state !== null` test, the
+          same shape review/[studentId]/day-record-form.tsx uses. The
+          single-branch version rendered an EMPTY <p role="alert"> the
+          moment the action started resolving to anything other than an
+          error -- a blank live region announcing nothing. */}
+      {state !== null && "error" in state && (
         <p role="alert" className="text-sm" style={{ color: "var(--st-missed)" }}>{state.error}</p>
+      )}
+      {state !== null && "ok" in state && (
+        <p role="status" className="text-sm" style={{ color: "var(--st-ok)" }}>Submitted.</p>
       )}
       <div>
         <Button type="submit" loading={pending}>Submit update</Button>

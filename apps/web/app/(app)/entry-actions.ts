@@ -32,11 +32,24 @@ function formString(value: FormDataEntryValue | null): string {
  * useActionState — see markAbsent and removeAbsence below, which regained
  * this shape after a review caught that their earlier plain-form wiring
  * silently discarded the `{ error }` this function type promises to surface.
+ *
+ * Returns `{ ok: true }` rather than `null` on success, for the same reason
+ * `saveDayRecord` in review/[studentId]/review-actions.ts does: resolving to
+ * nothing is indistinguishable, on screen, from a click that never reached
+ * the server. An entry is appended to a list the student cannot see from the
+ * composer, so unlike markAbsent and removeAbsence below — whose result is
+ * visible immediately, the panel re-renders as "Marked absent — …" or loses
+ * it — a silent success here has no other evidence at all. `null` remains
+ * the *initial* state useActionState is seeded with (see
+ * entry-composer.tsx); the action itself never returns it.
+ *
+ * markAbsent and removeAbsence deliberately keep their `null` success: their
+ * outcome is already on screen, so there is nothing ambiguous to confirm.
  */
 export async function submitEntry(
-  _prev: { error: string } | null,
+  _prev: { ok: true } | { error: string } | null,
   formData: FormData,
-): Promise<{ error: string } | null> {
+): Promise<{ ok: true } | { error: string }> {
   const client = await apiClient();
   const { error } = await createEntry({
     client,
@@ -47,7 +60,7 @@ export async function submitEntry(
   });
   if (error !== undefined) return { error: problemMessage(error, "The entry was not accepted.") };
   revalidatePath("/");
-  return null;
+  return { ok: true };
 }
 
 /**
