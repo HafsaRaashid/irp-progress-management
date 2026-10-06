@@ -45,6 +45,8 @@ tags:
     description: Mentor review of daily reports — forward-only state, attendance records, and the per-student day view.
   - name: Dashboards
     description: Derived, read-only summaries — the mentor's batch view (FR-28) and the student's own month (FR-29). Every figure is computed per request; nothing here is stored.
+  - name: Evaluations
+    description: AI-generated monthly evaluations and mentor overrides (FR-22-24).
 
 # Fail closed: every operation requires a bearer token unless it explicitly
 # opts out with `security: []`. Without this, an operation that simply omits
@@ -636,7 +638,8 @@ paths:
         computed by the domain engine rather than read from the materialised
         `Cycle` table (ADR-0019). A sequence beyond the current cycle is
         rejected — a cycle that has not happened has nothing to summarise.
-        No scores: none exist in this slice. Mentor only.
+        Each row's `evaluation` is null until that student's cycle has been
+        evaluated (FR-22). Mentor only.
       tags: [Dashboards]
       parameters:
         - name: id
@@ -694,6 +697,7 @@ paths:
                         reviewProgress:
                           inReview: 3
                           evaluated: 10
+                        evaluation: null
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1225,6 +1229,236 @@ paths:
                           submittedAt: '2026-08-03T11:30:00.000Z'
                           isLate: false
                           isExtra: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/students/{id}/evaluations:
+    post:
+      operationId: generateEvaluation
+      summary: Generate the AI evaluation for one student's closed cycle
+      description: |
+        FR-22/23. Mentor-only. The cycle named by `cycle` must have closed
+        (its end date has passed) and must not already have an evaluation.
+        The student's enrolment in this batch must span the whole cycle
+        (FR-27) — a student who joined or left partway through is not
+        evaluated for it.
+      tags: [Evaluations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The student's user id.
+          schema:
+            type: string
+            format: uuid
+            examples:
+              - 3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8
+        - name: cycle
+          in: query
+          required: true
+          description: The 1-based cycle sequence to evaluate.
+          schema:
+            type: integer
+            minimum: 1
+            examples:
+              - 3
+      responses:
+        '200':
+          description: The newly generated evaluation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evaluation'
+              examples:
+                generated:
+                  summary: A freshly generated evaluation, no override yet
+                  value:
+                    id: 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
+                    studentId: 3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8
+                    cycleSeq: 3
+                    attendance: 80
+                    taskCompletion: 90
+                    contributionInitiative: 70
+                    effortTime: 60
+                    mentorEvaluation: 85
+                    performanceIndex: 79
+                    summary: "You submitted on time for 18 of 20 required days this cycle..."
+                    modelVersion: gpt-4o-mini-2024-10-21
+                    override: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The cycle has not closed yet, already has an evaluation, or the student's enrolment does not span it.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                notClosed:
+                  summary: The cycle has not closed yet
+                  value:
+                    type: https://irp.bistec.example/problems/cycle-not-closed
+                    title: Cycle has not closed
+                    status: 409
+                    detail: This cycle does not close until 2026-02-09 — it cannot be evaluated yet (FR-22).
+                    instance: /api/v1/students/3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8/evaluations
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '502':
+          description: The AI provider returned an invalid response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                invalidResponse:
+                  summary: The AI provider's response could not be parsed
+                  value:
+                    type: https://irp.bistec.example/problems/ai-provider-invalid-response
+                    title: AI provider returned an invalid response
+                    status: 502
+                    detail: The evaluation could not be generated because the AI provider's response was malformed.
+                    instance: /api/v1/students/3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8/evaluations
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '503':
+          description: The AI provider is unavailable or unconfigured.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              examples:
+                providerUnavailable:
+                  summary: The AI provider could not be reached
+                  value:
+                    type: https://irp.bistec.example/problems/ai-provider-unavailable
+                    title: AI provider unavailable
+                    status: 503
+                    detail: The AI provider could not be reached. Please retry.
+                    instance: /api/v1/students/3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8/evaluations
+                    traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/students/{id}/evaluations/{cycle}:
+    get:
+      operationId: getEvaluation
+      summary: The evaluation for one student's cycle, if one exists
+      description: FR-22/23/24. Mentor-only. 404 before an evaluation has been generated.
+      tags: [Evaluations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The student's user id.
+          schema:
+            type: string
+            format: uuid
+            examples:
+              - 3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8
+        - name: cycle
+          in: path
+          required: true
+          description: The 1-based cycle sequence.
+          schema:
+            type: integer
+            minimum: 1
+            examples:
+              - 3
+      responses:
+        '200':
+          description: The evaluation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evaluation'
+              examples:
+                evaluated:
+                  summary: An evaluated cycle, no override
+                  value:
+                    id: 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
+                    studentId: 3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8
+                    cycleSeq: 3
+                    attendance: 80
+                    taskCompletion: 90
+                    contributionInitiative: 70
+                    effortTime: 60
+                    mentorEvaluation: 85
+                    performanceIndex: 79
+                    summary: "You submitted on time for 18 of 20 required days this cycle..."
+                    modelVersion: gpt-4o-mini-2024-10-21
+                    override: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/evaluations/{id}/override:
+    put:
+      operationId: overrideEvaluation
+      summary: Override an evaluation's score
+      description: FR-24. Mentor-only. Stores the new score, the original AI score, and the mentor's reason.
+      tags: [Evaluations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The evaluation's id.
+          schema:
+            type: string
+            format: uuid
+            examples:
+              - 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluationOverrideRequest'
+      responses:
+        '200':
+          description: The evaluation with its override applied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evaluation'
+              examples:
+                overridden:
+                  summary: A mentor-overridden evaluation
+                  value:
+                    id: 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
+                    studentId: 3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8
+                    cycleSeq: 3
+                    attendance: 80
+                    taskCompletion: 90
+                    contributionInitiative: 70
+                    effortTime: 60
+                    mentorEvaluation: 85
+                    performanceIndex: 79
+                    summary: "You submitted on time for 18 of 20 required days this cycle..."
+                    modelVersion: gpt-4o-mini-2024-10-21
+                    override:
+                      newScore: 85
+                      originalScore: 79
+                      reason: Strong finish to the cycle not fully reflected in the AI summary.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2056,16 +2290,147 @@ components:
           examples:
             - 10
 
+    Evaluation:
+      type: object
+      title: Evaluation
+      description: |
+        One student's AI-generated monthly evaluation (FR-22/23). The score of
+        record is `performanceIndex` unless `override` is present, in which
+        case `override.newScore` is the score of record (FR-24).
+      required: [id, studentId, cycleSeq, attendance, taskCompletion, contributionInitiative, effortTime, mentorEvaluation, performanceIndex, summary, modelVersion, override]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Evaluation identifier.
+          examples:
+            - 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
+        studentId:
+          type: string
+          format: uuid
+          description: The evaluated student.
+          examples:
+            - 3f1a2b4c-5d6e-4f70-8192-a3b4c5d6e7f8
+        cycleSeq:
+          type: integer
+          minimum: 1
+          description: The 1-based cycle sequence this evaluation covers (ADR-0019).
+          examples:
+            - 3
+        attendance:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Weight 20% (brief §5).
+          examples:
+            - 80
+        taskCompletion:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Weight 25% (brief §5).
+          examples:
+            - 90
+        contributionInitiative:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Weight 25% (brief §5).
+          examples:
+            - 70
+        effortTime:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Weight 10% (brief §5).
+          examples:
+            - 60
+        mentorEvaluation:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Weight 20% (brief §5).
+          examples:
+            - 85
+        performanceIndex:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: The AI-computed weighted score (FR-23) — always computed by the API, never taken verbatim from the AI.
+          examples:
+            - 79
+        summary:
+          type: string
+          description: The AI-generated prose summary (FR-22). Never editable (FR-25).
+          examples:
+            - "You submitted on time for 18 of 20 required days this cycle..."
+        modelVersion:
+          type: string
+          description: The AI model identifier used, persisted for NFR-15's determinism audit trail.
+          examples:
+            - gpt-4o-mini-2024-10-21
+        override:
+          oneOf:
+            - type: object
+              required: [newScore, originalScore, reason]
+              additionalProperties: false
+              properties:
+                newScore:
+                  type: number
+                  minimum: 0
+                  maximum: 100
+                  description: The mentor's replacement score.
+                  examples:
+                    - 85
+                originalScore:
+                  type: number
+                  minimum: 0
+                  maximum: 100
+                  description: The AI's original `performanceIndex`, preserved for the audit trail.
+                  examples:
+                    - 79
+                reason:
+                  type: string
+                  description: The mentor's reason for overriding the score.
+                  examples:
+                    - Strong finish to the cycle not fully reflected in the AI summary.
+            - type: 'null'
+          description: Null until a mentor overrides the score (FR-24).
+          examples:
+            - null
+
+    EvaluationOverrideRequest:
+      type: object
+      title: EvaluationOverrideRequest
+      description: FR-24 — a mentor's override of an evaluation's score.
+      required: [newScore, reason]
+      additionalProperties: false
+      properties:
+        newScore:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: The mentor's replacement score, superseding the AI's `performanceIndex` (FR-24).
+          examples:
+            - 85
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Why the mentor is overriding the AI score.
+          examples:
+            - Strong finish to the cycle not fully reflected in the AI summary.
+
     StudentCycleSummary:
       type: object
       title: StudentCycleSummary
       description: |
         One enrolled student's cycle at a glance, for the mentor's Cycles view.
-        Carries no score and no rank — no evaluation exists in this slice
-        (O-5 blocks the AI provider decision), so the interface renders an
-        "awaiting evaluation" state rather than the API returning an always-null
-        field.
-      required: [student, counts, reviewProgress]
+        `evaluation` is null until the cycle has been evaluated (FR-22) — the
+        interface renders an "awaiting evaluation" state rather than treating
+        a null field as an error.
+      required: [student, counts, reviewProgress, evaluation]
       additionalProperties: false
       properties:
         student:
@@ -2095,6 +2460,13 @@ components:
           $ref: '#/components/schemas/CycleCounts'
         reviewProgress:
           $ref: '#/components/schemas/ReviewProgress'
+        evaluation:
+          oneOf:
+            - $ref: '#/components/schemas/Evaluation'
+            - type: 'null'
+          description: The cycle's AI evaluation (FR-22/23), or its mentor override if one was made (FR-24). Null until generated.
+          examples:
+            - null
 
     BatchCycleSummary:
       type: object

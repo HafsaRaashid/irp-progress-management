@@ -1340,7 +1340,7 @@ Add to `spec/openapi.yaml`'s `components/schemas` (alongside `CycleCounts`/`Revi
           description: The 1-based cycle sequence to evaluate.
           examples: { cycle: { value: 3 } }
       responses:
-        '201':
+        '200':
           description: The newly generated evaluation.
           content:
             application/json:
@@ -1368,19 +1368,19 @@ Add to `spec/openapi.yaml`'s `components/schemas` (alongside `CycleCounts`/`Revi
           description: The cycle has not closed yet, already has an evaluation, or the student's enrolment does not span it.
           content:
             application/problem+json:
-              schema: { $ref: '#/components/schemas/ProblemDetails' }
+              schema: { $ref: '#/components/schemas/Problem' }
               examples:
                 notClosed: { value: { type: 'https://irp.bistec.example/problems/cycle-not-closed', title: 'Cycle has not closed', status: 409, detail: 'This cycle does not close until 2026-02-09 — it cannot be evaluated yet (FR-22).' } }
         '502':
           description: The AI provider returned an invalid response.
           content:
             application/problem+json:
-              schema: { $ref: '#/components/schemas/ProblemDetails' }
+              schema: { $ref: '#/components/schemas/Problem' }
         '503':
           description: The AI provider is unavailable or unconfigured.
           content:
             application/problem+json:
-              schema: { $ref: '#/components/schemas/ProblemDetails' }
+              schema: { $ref: '#/components/schemas/Problem' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /api/v1/students/{id}/evaluations/{cycle}:
@@ -1451,6 +1451,22 @@ Confirm `#/components/responses/NotFound` already exists (it is used elsewhere, 
 404s) before relying on the `$ref` — if it does not, add it alongside `BadRequest`/`Unauthorized`/
 etc. following their exact shape.
 
+**Defects fixed at source (discovered implementing this task):** the YAML above originally used
+`'201'` for `generateEvaluation`'s success response and `$ref: '#/components/schemas/ProblemDetails'`
+for the 409/502/503 problem bodies. Both are wrong: the schema component is named `Problem` (there
+is no `ProblemDetails` in this spec — every other error response already refs `Problem`), and the
+repo's Problem-details schema itself permits `additionalProperties` so there was never a reason to
+need a second schema. More importantly, `redocly.yaml`'s custom
+`rule/every-operation-defines-the-four-contract-responses` assertion requires the **literal key**
+`'200'` on every operation — `recommended-strict` gives zero tolerance for warnings, so an operation
+whose only success code is `'201'` fails the gate outright (confirmed empirically: lint errored
+`Every operation must define 200, 400, 401 and 500 responses` against the unmodified `'201'`).
+Every existing operation in this spec — including other POSTs that create a resource, e.g.
+`createEntry`, `createAbsence` — already returns `'200'`, never `'201'`; CLAUDE.md's "no exceptions"
+on the 200/400/401/500 set is deliberately absolute, not REST-conventional. The YAML above, and
+Task 6 below (the `reply.code(201)` call and the test's `toBe(201)` assertion), have been corrected
+to `'200'`/`200` to match. Do not reintroduce `'201'` or `ProblemDetails` here.
+
 - [ ] **Step 3: Add `evaluation` to `StudentCycleSummary`**
 
 Find `StudentCycleSummary` (the Cycles page's per-student row) and add `evaluation` to its
@@ -1517,7 +1533,7 @@ describe("evaluations endpoints", () => {
     }));
   });
 
-  it("404s before generation, 201s on generation, 200s after", async () => {
+  it("404s before generation, 200s on generation, 200s after", async () => {
     const before = await app.inject({
       method: "GET", url: `/api/v1/students/${studentId}/evaluations/1`,
       headers: { authorization: `Bearer ${adminToken}` },
@@ -1528,7 +1544,7 @@ describe("evaluations endpoints", () => {
       method: "POST", url: `/api/v1/students/${studentId}/evaluations?cycle=1`,
       headers: { authorization: `Bearer ${adminToken}` },
     });
-    expect(generated.statusCode).toBe(201);
+    expect(generated.statusCode).toBe(200);
     const evaluation = generated.json();
     expect(evaluation.override).toBeNull();
 
@@ -1669,7 +1685,9 @@ export const evaluationRoutes: FastifyPluginAsync<{
       const view = await opts.evaluationService.generateForCycle(
         enrolment.batchId, student.id, req.query.cycle, new Date(),
       );
-      reply.code(201);
+      // 200, not 201: the spec's custom four-response lint assertion requires
+      // the literal '200' key on every operation (Task 5's fix-at-source note).
+      reply.code(200);
       return toApiEvaluation(view);
     },
   );
