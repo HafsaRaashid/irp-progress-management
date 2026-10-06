@@ -12,6 +12,7 @@ export const ENTRY_CREATE_BODY = {
   properties: {
     entryDate: { type: "string", format: "date" },
     body: { type: "string", minLength: 1, maxLength: 4000 },
+    meetingMinutes: { type: "integer", minimum: 0, maximum: 480 },
   },
 } as const;
 

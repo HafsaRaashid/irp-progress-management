@@ -168,6 +168,7 @@ paths:
                     submittedAt: '2026-08-03T11:30:00.000Z'
                     isLate: false
                     isExtra: false
+                    meetingMinutes: 45
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -239,6 +240,7 @@ paths:
                           submittedAt: '2026-07-31T10:05:00.000Z'
                           isLate: false
                           isExtra: false
+                          meetingMinutes: null
                     - date: '2026-08-01'
                       status: none
                       reportStatus: null
@@ -537,6 +539,7 @@ paths:
                             submittedAt: '2026-08-03T11:30:00.000Z'
                             isLate: false
                             isExtra: false
+                            meetingMinutes: null
                       hasMentorRecord: false
                       extraCountThisCycle: 0
         '400':
@@ -1229,6 +1232,7 @@ paths:
                           submittedAt: '2026-08-03T11:30:00.000Z'
                           isLate: false
                           isExtra: false
+                          meetingMinutes: null
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1466,12 +1470,24 @@ components:
           description: What was worked on. Plain text.
           examples:
             - Implemented the roster endpoint and its tests.
+        meetingMinutes:
+          type: integer
+          minimum: 0
+          maximum: 480
+          description: |
+            Optional minutes spent in meetings that day, self-reported by the
+            student. Supplementary context (FR-17), on the same footing as
+            the attendance/task notes that section already names — never
+            used in evaluation or scoring (O-18: day-to-day scoring is a
+            confirmed non-goal). Capped at 480 (8 hours, a full working day).
+          examples:
+            - 45
 
     Entry:
       type: object
       title: Entry
       description: One stored entry with server-computed flags.
-      required: [id, entryDate, body, submittedAt, isLate, isExtra]
+      required: [id, entryDate, body, submittedAt, isLate, isExtra, meetingMinutes]
       additionalProperties: false
       properties:
         id:
@@ -1507,6 +1523,16 @@ components:
           description: True for entries on optional (weekend) days — FR-33.
           examples:
             - false
+        meetingMinutes:
+          oneOf:
+            - type: integer
+            - type: 'null'
+          description: |
+            Minutes spent in meetings that day, when the student reported
+            any — null otherwise. Supplementary (FR-17); never a factor in
+            evaluation (O-18).
+          examples:
+            - 45
 
     DayStatus:
       type: string

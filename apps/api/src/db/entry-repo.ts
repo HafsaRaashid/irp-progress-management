@@ -29,6 +29,8 @@ export interface EntryRecord {
   submittedAt: Date;
   isLate: boolean;
   isExtra: boolean;
+  /** Self-reported minutes in meetings (FR-17, ADR-0033). Null when not given. */
+  meetingMinutes: number | null;
 }
 
 export interface DailyReportRecord {
@@ -44,6 +46,8 @@ export interface EntryRepo {
     entryDate: CivilDate;
     body: string;
     submittedAt: Date;
+    /** Omitted, not merely undefined-vs-0: an absent value must store NULL, not 0. */
+    meetingMinutes?: number;
   }): Promise<EntryRecord>;
   listEntries(studentId: string, from: CivilDate, to: CivilDate): Promise<EntryRecord[]>;
   getReport(studentId: string, date: CivilDate): Promise<DailyReportRecord | null>;
@@ -68,7 +72,7 @@ export interface EntryRepo {
 
 interface DbEntry {
   id: string; studentId: string; entryDate: Date; body: string;
-  submittedAt: Date; isLate: boolean; isExtra: boolean;
+  submittedAt: Date; isLate: boolean; isExtra: boolean; meetingMinutes: number | null;
 }
 
 function mapEntry(e: DbEntry): EntryRecord {
@@ -80,6 +84,7 @@ function mapEntry(e: DbEntry): EntryRecord {
     submittedAt: e.submittedAt,
     isLate: e.isLate,
     isExtra: e.isExtra,
+    meetingMinutes: e.meetingMinutes,
   };
 }
 
@@ -134,6 +139,13 @@ export function createEntryRepo(prisma: PrismaClient): EntryRepo {
             submittedAt: input.submittedAt,
             isLate: flags.isLate,
             isExtra: flags.isExtra,
+            // ?? null, not left as `number | undefined`: this tsconfig's
+            // exactOptionalPropertyTypes forbids assigning a bare `undefined`
+            // to a property Prisma types as `number | null` (no undefined in
+            // the union) -- the generated create input wants the key either
+            // OMITTED or explicitly null, and null is also the correct
+            // semantic value here: "not reported" IS null, not merely absent.
+            meetingMinutes: input.meetingMinutes ?? null,
           },
         });
         return mapEntry(entry);

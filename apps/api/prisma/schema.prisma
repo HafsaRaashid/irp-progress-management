@@ -90,6 +90,11 @@ model Entry {
   submittedAt DateTime @db.Timestamptz(3)
   isLate      Boolean
   isExtra     Boolean
+  /// Self-reported minutes in meetings that day (FR-17, ADR-0033). Nullable:
+  /// most entries will not carry one, and null is distinct from 0 -- a
+  /// student who attended no meetings never wrote anything here, versus one
+  /// who explicitly reported zero. Never read by evaluation (O-18).
+  meetingMinutes Int?
   createdAt   DateTime @default(now()) @db.Timestamptz(3)
 
   student User @relation(fields: [studentId], references: [id])
