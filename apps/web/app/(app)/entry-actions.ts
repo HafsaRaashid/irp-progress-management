@@ -47,18 +47,28 @@ function formString(value: FormDataEntryValue | null): string {
  * outcome is already on screen, so there is nothing ambiguous to confirm.
  */
 export async function submitEntry(
-  _prev: { ok: true } | { error: string } | null,
+  _prev: { ok: true } | { error: string; body: string } | null,
   formData: FormData,
-): Promise<{ ok: true } | { error: string }> {
+): Promise<{ ok: true } | { error: string; body: string }> {
   const client = await apiClient();
+  const entryBody = formString(formData.get("body"));
   const { error } = await createEntry({
     client,
     body: {
       entryDate: formString(formData.get("entryDate")),
-      body: formString(formData.get("body")),
+      body: entryBody,
     },
   });
-  if (error !== undefined) return { error: problemMessage(error, "The entry was not accepted.") };
+  // The rejected text travels back with the error. React 19 resets an
+  // uncontrolled <form action={fn}> when the action COMPLETES, not when it
+  // SUCCEEDS, so without this a rejected entry cleared the textarea and the
+  // student lost the update they had just written -- worst at a grace-window
+  // deadline, which is both when a rejection is likeliest and when retyping
+  // costs most. entry-composer.tsx re-seeds the textarea from this, which
+  // works WITH the reset instead of racing it.
+  if (error !== undefined) {
+    return { error: problemMessage(error, "The entry was not accepted."), body: entryBody };
+  }
   revalidatePath("/");
   return { ok: true };
 }

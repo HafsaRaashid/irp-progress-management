@@ -29,11 +29,24 @@ export function EntryComposer({ targetDates }: { targetDates: string[] }) {
           <option key={d} value={d}>{formatCivilDateLabel(d)}</option>
         ))}
       </select>
+      {/*
+        defaultValue, not value: this stays an UNCONTROLLED field. React 19
+        resets the form when the action completes -- including when it FAILS --
+        and that reset restores each field to its defaultValue. Re-seeding
+        defaultValue from the rejected body therefore works WITH the reset
+        rather than racing it, and the success path (state has no `body`)
+        still resets to empty exactly as before.
+
+        A controlled textarea would make every keystroke a state update on the
+        student's primary input, and would hand us the success-path clearing
+        that currently works for free. Do not convert it.
+      */}
       <textarea
         name="body"
         required
         maxLength={4000}
         rows={4}
+        defaultValue={state !== null && "error" in state ? state.body : ""}
         placeholder="What did you work on?"
         aria-label="Entry text"
         className="control"

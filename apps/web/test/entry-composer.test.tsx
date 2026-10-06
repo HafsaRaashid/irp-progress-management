@@ -106,6 +106,36 @@ describe("EntryComposer", () => {
     expect(textarea).toHaveValue("");
   });
 
+  it("keeps the typed body when a submission is REJECTED, so the student need not retype it", async () => {
+    // The counterpart to the reset above, and the reason that reset needs a
+    // limit. React 19 resets the form when the action COMPLETES, not when it
+    // SUCCEEDS -- so before this was fixed, a rejected entry cleared the
+    // textarea too: the student read "the submission window is closed" and
+    // found the update they had just written had been thrown away.
+    //
+    // That bites hardest against a grace-window deadline, which is exactly
+    // when a submission is most likely to be rejected and the typed text
+    // most expensive to lose. The action now carries the rejected body back
+    // and the textarea re-seeds from it.
+    submitEntry.mockResolvedValueOnce({
+      error: "The submission window for 2026-01-05 is closed.",
+      body: "A full afternoon of work I do not want to retype.",
+    });
+    render(<EntryComposer targetDates={["2026-07-31"]} />);
+
+    const textarea = screen.getByLabelText("Entry text");
+    fireEvent.change(textarea, {
+      target: { value: "A full afternoon of work I do not want to retype." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit update" }));
+
+    // The error is shown AND the work survives. Both halves matter: showing
+    // the error while discarding the text is the defect, not the fix.
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("The submission window for 2026-01-05 is closed.");
+    expect(textarea).toHaveValue("A full afternoon of work I do not want to retype.");
+  });
+
   it("submits the selected date and body through the action", async () => {
     submitEntry.mockResolvedValueOnce({ ok: true });
     render(<EntryComposer targetDates={["2026-07-31"]} />);
