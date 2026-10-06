@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import MyMonthPage from "@/app/(app)/my-month/page";
+import MyProgressPage from "@/app/(app)/my-progress/page";
 
 const { getCurrentUserOrRedirect, apiClient } = vi.hoisted(() => ({
   getCurrentUserOrRedirect: vi.fn(),
@@ -34,7 +34,7 @@ const dash = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-describe("MyMonthPage", () => {
+describe("MyProgressPage", () => {
   // Same latent risk cycles-page.test.tsx had (Finding 3, Plan 7 whole-branch
   // review): with no clearing, `toHaveBeenCalledWith` could match a call
   // left over from an earlier test rather than the one this test made.
@@ -48,26 +48,47 @@ describe("MyMonthPage", () => {
     getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.getByText(/Month 3 of 6/)).toBeInTheDocument();
     expect(screen.getByText(/94% compliance/)).toBeInTheDocument();
   });
 
-  it("leaves the ribbon and the strengths prose to the student's home (§8.2)", async () => {
-    // Both moved to (app)/student-today.tsx, where §8.2 places them: above the
-    // composer, on the page the student lands on. Keeping a second copy here
-    // made My month a near-duplicate of home rather than the day-by-day
-    // history FR-29 asks for.
+  it("leaves the ribbon to the student's home but now CARRIES the feedback band (ADR-0031)", async () => {
+    // The ribbon stays on home, where §8.2 places it: above the composer, on
+    // the page the student lands on. A second copy here made this page a
+    // near-duplicate of home rather than the day-by-day history FR-29 asks for.
+    //
+    // The FEEDBACK band moved the other way, which is what ADR-0031 decided and
+    // what this assertion flipped to record. It belongs with the history it
+    // describes, and it does not earn a nav item of its own: O-5 blocks the AI
+    // provider, so strengthsAndWeaknesses is null for every student in this
+    // release and a dedicated page would be permanently empty.
     getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
     apiClient.mockResolvedValue({});
     getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.queryByRole("figure")).not.toBeInTheDocument();
-    expect(screen.queryByText("Strengths and areas to develop")).not.toBeInTheDocument();
+    expect(screen.getByText("Strengths and areas to develop")).toBeInTheDocument();
+  });
+
+  it("renders the feedback band's empty state while O-5 leaves every evaluation null", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+    apiClient.mockResolvedValue({});
+    getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+    listMyDays.mockResolvedValue({ data: [], error: undefined });
+
+    render(await MyProgressPage());
+
+    // §11: empty states are invitations, and the copy says "month", never the
+    // internal word "cycle".
+    const empty = screen.getByText(/No evaluation yet/);
+    expect(empty).toBeInTheDocument();
+    expect(empty.textContent).toContain("month");
+    expect(empty.textContent).not.toContain("cycle");
   });
 
   it("shows no score, no rank, and no other student anywhere (FR-30)", async () => {
@@ -76,7 +97,7 @@ describe("MyMonthPage", () => {
     getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    const { container } = render(await MyMonthPage());
+    const { container } = render(await MyProgressPage());
 
     expect(container.textContent).not.toMatch(/rank|score|index|leaderboard/i);
   });
@@ -93,7 +114,7 @@ describe("MyMonthPage", () => {
     });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.getByText(/first evaluated month starts/i)).toBeInTheDocument();
     expect(screen.queryByText(/Month null/)).not.toBeInTheDocument();
@@ -125,7 +146,7 @@ describe("MyMonthPage", () => {
       error: undefined,
     });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     const bodies = screen.getAllByTestId("day-entry-body").map((n) => n.textContent);
     expect(bodies).toEqual(["Newer entry.", "Older entry."]);
@@ -168,7 +189,7 @@ describe("MyMonthPage", () => {
       error: undefined,
     });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.getByText("Real work.")).toBeInTheDocument();
     expect(screen.getByText("Friday 31 July")).toBeInTheDocument();
@@ -195,7 +216,7 @@ describe("MyMonthPage", () => {
       error: undefined,
     });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.getByText("Nothing recorded this month yet.")).toBeInTheDocument();
   });
@@ -214,7 +235,7 @@ describe("MyMonthPage", () => {
     });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.getByText("— compliance")).toBeInTheDocument();
   });
@@ -231,7 +252,7 @@ describe("MyMonthPage", () => {
       error: undefined,
     });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.getByText("Medical appointment")).toBeInTheDocument();
   });
@@ -248,7 +269,7 @@ describe("MyMonthPage", () => {
     });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.getByText(/not enrolled in a batch yet/i)).toBeInTheDocument();
     expect(screen.queryByText(/Month null/)).not.toBeInTheDocument();
@@ -264,7 +285,7 @@ describe("MyMonthPage", () => {
       error: { type: "about:blank", title: "Internal Server Error", status: 500, detail: "Your day history could not be loaded." },
     });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.getByText("Your day history could not be loaded.")).toBeInTheDocument();
     expect(screen.queryByText(/Nothing recorded this month yet./)).not.toBeInTheDocument();
@@ -283,7 +304,7 @@ describe("MyMonthPage", () => {
     });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyMonthPage());
+    render(await MyProgressPage());
 
     expect(screen.getByRole("alert")).toHaveTextContent("Your month could not be loaded.");
   });

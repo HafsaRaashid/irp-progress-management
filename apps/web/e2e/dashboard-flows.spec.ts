@@ -89,21 +89,33 @@ test.describe("mentor Today (FR-28)", () => {
 });
 
 test.describe("student home (FR-29, FR-30, design-system §8.2)", () => {
-  test("leads with the student's own ribbon above the composer, and the designed empty evaluation state", async ({
+  test("leads with the student's own ribbon above the composer, under the greeting band", async ({
     page,
   }) => {
     // §8.2: "Same ribbon, personal marks. The submission box is the primary
-    // action and sits immediately below it." Both the ribbon and the strengths
-    // prose used to live only on My month, so this is the assertion that keeps
-    // them on the page the student actually lands on.
+    // action and sits immediately below it." The ribbon used to live only on
+    // the history page, so this is the assertion that keeps it on the page the
+    // student actually lands on.
+    //
+    // The strengths prose is NOT asserted here any more: it moved to
+    // My progress under ADR-0031, where that spec now asserts it. Home is the
+    // scan and the action.
     await signInAsStudent(page);
 
-    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+    // The student home now opens with the greeting band's salutation, not a
+    // static "Today" title (design-system §8.2). Matched as a pattern because
+    // it depends on the hour in Colombo.
+    await expect(
+      page.getByRole("heading", { name: /^Good (morning|afternoon|evening)$/, level: 1 }),
+    ).toBeVisible();
     const figure = page.getByRole("figure");
     await expect(figure).toBeVisible();
     await expect(figure.locator("figcaption")).toHaveText(/Month \d of 6/);
-    await expect(page.getByText(/No evaluation yet/)).toBeVisible();
+    await expect(page.getByText(/No evaluation yet/)).toHaveCount(0);
     await expect(page.getByLabel("Entry text")).toBeVisible();
+    // The streak chip: the student's own count, no window named, nothing
+    // comparative (FR-30).
+    await expect(page.getByTestId("streak-chip")).toHaveText(/\d+ of \d+ days submitted/);
 
     // Ordering is the actual §8.2 requirement, not merely co-presence: the
     // ribbon has to sit ABOVE the composer. DOCUMENT_POSITION_FOLLOWING means
@@ -120,33 +132,41 @@ test.describe("student home (FR-29, FR-30, design-system §8.2)", () => {
   });
 });
 
-test.describe("student My month (FR-29, FR-30)", () => {
+test.describe("student My progress (FR-29, FR-30)", () => {
   test("shows which month the history covers and the student's own pills", async ({ page }) => {
     await signInAsStudent(page);
-    await page.getByRole("link", { name: "My month" }).click();
+    await page.getByRole("link", { name: "My progress" }).click();
 
-    await expect(page.getByRole("heading", { name: "My month" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "My progress" })).toBeVisible();
     await expect(page.getByText(/Month \d of 6/)).toBeVisible();
     await expect(page.getByText(/\d+% compliance/)).toBeVisible();
     // dev-student-1 is the fully compliant persona, so at least one on-time day.
     await expect(page.locator('[data-status="onTime"]').first()).toBeVisible();
   });
 
-  test("leaves the ribbon and the strengths prose to the home page (§8.2)", async ({ page }) => {
+  test("leaves the ribbon to the home page but CARRIES the feedback band (§8.2, ADR-0031)", async ({ page }) => {
     // The restructure's other half. Without this, the two surfaces could drift
     // back into being near-duplicates and nothing would catch it.
+    //
+    // The ribbon stays on home. The FEEDBACK band moved the other way under
+    // ADR-0031 -- it belongs with the history that explains it, and it does
+    // not earn a nav item of its own while O-5 leaves strengthsAndWeaknesses
+    // null for every student in this release.
     await signInAsStudent(page);
-    await page.getByRole("link", { name: "My month" }).click();
-    await expect(page.getByRole("heading", { name: "My month" })).toBeVisible();
+    await page.getByRole("link", { name: "My progress" }).click();
+    await expect(page.getByRole("heading", { name: "My progress" })).toBeVisible();
 
     await expect(page.getByRole("figure")).toHaveCount(0);
-    await expect(page.getByText("Strengths and areas to develop")).toHaveCount(0);
+    await expect(page.getByText("Strengths and areas to develop")).toHaveCount(1);
+    // The designed empty state, not an apologetic blank -- and it says
+    // "month", never the internal word "cycle" (§11).
+    await expect(page.getByText(/No evaluation yet/)).toBeVisible();
   });
 
   test("shows no score, rank or other student's name anywhere on the page (FR-30)", async ({ page }) => {
     await signInAsStudent(page);
-    await page.getByRole("link", { name: "My month" }).click();
-    await expect(page.getByRole("heading", { name: "My month" })).toBeVisible();
+    await page.getByRole("link", { name: "My progress" }).click();
+    await expect(page.getByRole("heading", { name: "My progress" })).toBeVisible();
 
     const text = await page.locator("main").innerText();
     expect(text).not.toMatch(/rank|leaderboard|performance index/i);
@@ -161,6 +181,11 @@ test.describe("student My month (FR-29, FR-30)", () => {
 
     await page.goto("/cycles");
     // Redirected home, not shown a 403 page — the pattern Roster and Review set.
-    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+    // The student home now opens with the greeting band's salutation, not a
+    // static "Today" title (design-system §8.2). Matched as a pattern because
+    // it depends on the hour in Colombo.
+    await expect(
+      page.getByRole("heading", { name: /^Good (morning|afternoon|evening)$/, level: 1 }),
+    ).toBeVisible();
   });
 });

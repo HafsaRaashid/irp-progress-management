@@ -65,9 +65,15 @@ test.describe("dark theme renders every view", () => {
   test("the student's views render with the OS in dark", async ({ page }) => {
     await signInAsStudent(page);
 
+    // The home page's <h1> is the greeting band's salutation, not a static
+    // title: the bare <PageTitle>Today</PageTitle> was replaced in the student
+    // refresh (design-system §8.2). It is time-of-day dependent, so this
+    // matches the three possible salutations rather than pinning one -- a
+    // fixed string here would pass only between certain hours in Colombo,
+    // which is the kind of gate that fails at 6pm and nowhere else.
     for (const [path, heading] of [
-      ["/", "Today"],
-      ["/my-month", "My month"],
+      ["/", /^Good (morning|afternoon|evening)$/],
+      ["/my-progress", "My progress"],
     ] as const) {
       await page.goto(path);
       await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();

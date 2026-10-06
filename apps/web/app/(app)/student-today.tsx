@@ -48,10 +48,10 @@ const ENTRY_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
  *
  * "Same ribbon, personal marks. The submission box is the primary action and
  * sits immediately below it." The ribbon and the cycle summary used to live
- * only on My month, so the mentor's home opened with the system's signature
+ * only on My progress, so the mentor's home opened with the system's signature
  * element while the student's opened with a bare <select>. §8.2's order is
  * followed here: cycle position, ribbon, composer, then the strengths prose.
- * My month keeps the day-by-day history — the one thing this page does not
+ * My progress keeps the day-by-day history — the one thing this page does not
  * show, since it lists only the open submission window.
  *
  * No score, no rank, no other student anywhere on this surface (FR-30).
@@ -248,24 +248,6 @@ export async function StudentToday({ displayName, role }: { displayName: string;
         })}
       </div>
 
-      {/* §8.2's third band: "Strengths and areas to develop … current cycle
-          summary, prose, no score". */}
-      {dashboard !== undefined && (
-        <>
-          <SectionLabel>Strengths and areas to develop</SectionLabel>
-          <div className="mt-2">
-            <Panel>
-              {dashboard.strengthsAndWeaknesses === null ? (
-                <EmptyState title="No evaluation yet — your first summary appears after your month closes." />
-              ) : (
-                <p className="prose" style={{ color: "var(--ink)" }}>
-                  {dashboard.strengthsAndWeaknesses}
-                </p>
-              )}
-            </Panel>
-          </div>
-        </>
-      )}
     </div>
   );
 }

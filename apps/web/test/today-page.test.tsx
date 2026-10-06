@@ -100,10 +100,16 @@ describe("TodayPage role branches", () => {
     expect(screen.getByTestId("user-role")).toHaveTextContent("Student");
   });
 
-  it("puts the ribbon and the strengths prose on the student's home, above the composer (§8.2)", async () => {
+  it("puts the ribbon on the student's home, above the composer, and the feedback band on My progress (§8.2, ADR-0031)", async () => {
     // The §8.2 restructure: "Same ribbon, personal marks. The submission box is
-    // the primary action and sits immediately below it." Both used to exist
-    // only on My month, so the student's home opened with a bare <select>.
+    // the primary action and sits immediately below it." The ribbon used to
+    // exist only on My progress, so the student's home opened with a bare
+    // <select>.
+    //
+    // The FEEDBACK band went the other way under ADR-0031 and is asserted
+    // ABSENT here. Home is the scan and the action; the band belongs with the
+    // history that explains it, and it is null for every student this release
+    // while O-5 is open.
     getCurrentUserOrRedirect.mockResolvedValue(STUDENT_USER);
     apiClient.mockResolvedValue({});
     listMyDays.mockResolvedValue({ data: [], error: undefined });
@@ -129,9 +135,9 @@ describe("TodayPage role branches", () => {
 
     expect(screen.getByRole("figure")).toBeInTheDocument();
     expect(screen.getByText(/Month 3 of 6/)).toBeInTheDocument();
-    expect(screen.getByText("Strengths and areas to develop")).toBeInTheDocument();
+    expect(screen.queryByText("Strengths and areas to develop")).not.toBeInTheDocument();
     // FR-30: no score reaches this surface, and the compliance PERCENTAGE
-    // lives on My month — home carries the outcome counts only.
+    // lives on My progress — home carries the outcome counts only.
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 

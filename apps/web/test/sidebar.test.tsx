@@ -44,7 +44,7 @@ describe("Sidebar Settings entry", () => {
   });
 
   it("does not add Settings to the primary role lists", () => {
-    // Students see two primary destinations (Today, My month) plus Settings.
+    // Students see two primary destinations (Today, My progress) plus Settings.
     render(<Sidebar role="Student" />);
     expect(screen.getAllByRole("link")).toHaveLength(3);
   });

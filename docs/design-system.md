@@ -408,6 +408,24 @@ Every status carries **a glyph and a word**, never colour alone.
 Same ribbon, personal marks. The submission box is the primary action and sits immediately
 below it. No score, no rank, no other students, anywhere on this surface.
 
+**Two student routes, not three** ([ADR-0031](adr/0031-two-student-pages-feedback-with-the-history.md)):
+
+| Route | Holds |
+|---|---|
+| `/` **Today** | greeting band · ribbon · counts + streak chip · composer · recent days · mark absent |
+| `/my-progress` **My progress** | "Month N of 6" pips · day-by-day history · strengths and areas |
+
+**This is not a reversal of this section.** The composer stays immediately below the ribbon, which
+is what §8.2 specifies and what the mock below still shows. Only the *feedback band* moved — to the
+history that explains it, where it also stops being a permanently empty nav destination while
+**O-5** leaves `strengthsAndWeaknesses` null for every student.
+
+The page opens with a **greeting band** rather than a bare "Today" title — a time-of-day salutation
+and the Colombo civil date, on the §3.1 gradient. It lives in the page, never in the shared topbar,
+whose contract §6 fixes at "brand and name, nothing else". Beside the counts sits a **streak chip**
+("12 of 14 days submitted"): the student's own count, with days *elapsed* as its denominator, no
+window named, and nothing comparative anywhere in it (FR-30).
+
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │  Month 2 of 6 · Cycle 2 · 10 Jul – 9 Aug                               │

@@ -34,6 +34,49 @@ const SETTLED_STATUSES = new Set(["onTime", "late", "absent", "missed"]);
  * boundary (the API is), just the wrong screen for them — a mentor holds no
  * enrolment and would see an empty month.
  */
+/**
+ * "Month 3 of 6" as pips — the programme position, which until now rendered
+ * only as text inside cycleHeading().
+ *
+ * Renders NOTHING when `seq` is null. A mid-cycle joiner has no sequence until
+ * their first evaluated cycle opens (FR-27), and cycleHeading() already handles
+ * that branch by saying so in words; drawing six empty circles beside it would
+ * contradict the sentence next to them. Never "Month null of 6", never NaN pips.
+ *
+ * ENTIRELY aria-hidden, with no screen-reader text of its own. §12 forbids a
+ * visual carrying meaning ALONE — these do not: cycleHeading() renders "Month 3
+ * of 6 · 10 July – 9 August" as the label immediately beside them, so the
+ * information is already in text. An sr-only duplicate here would make a screen
+ * reader announce "Month 3 of 6" twice in a row, which is noise, not access.
+ * (It also made getByText(/Month 3 of 6/) ambiguous, which is how the
+ * duplication was caught.)
+ */
+function ProgrammePips({ seq, total }: { seq: number | null; total: number }) {
+  if (seq === null || total < 1) return null;
+  return (
+    <div aria-hidden="true" className="flex items-center gap-3">
+      <span className="flex items-center gap-1.5">
+        {Array.from({ length: total }, (_, i) => (
+          <span
+            key={i}
+            className="inline-block rounded-full"
+            style={{
+              width: "8px",
+              height: "8px",
+              // Months already completed and the current one are filled; the
+              // rest are outlined. --primary-weak is §3.1's "primary-tinted
+              // fill", not a status colour: programme position is not a
+              // compliance outcome and must not borrow the status ramp.
+              background: i < seq ? "var(--primary)" : "var(--primary-weak)",
+              border: i < seq ? "none" : "1px solid var(--line-strong)",
+            }}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
 export default async function MyMonthPage() {
   const user = await getCurrentUserOrRedirect();
   if (user.role !== "Student") redirect("/");
@@ -47,7 +90,7 @@ export default async function MyMonthPage() {
   if (error !== undefined || dashboard === undefined) {
     return (
       <div>
-        <PageTitle>My month</PageTitle>
+        <PageTitle>My progress</PageTitle>
         <Panel>
           <p role="alert" style={{ color: "var(--st-missed)" }}>
             {error?.detail ?? error?.title ?? "Your month could not be loaded."}
@@ -90,7 +133,7 @@ export default async function MyMonthPage() {
 
   return (
     <div>
-      <PageTitle>My month</PageTitle>
+      <PageTitle>My progress</PageTitle>
 
       {/*
         The ribbon, the outcome counts and the strengths prose moved to the
@@ -103,7 +146,10 @@ export default async function MyMonthPage() {
         came out.
       */}
       <div className="mb-6">
-        <SectionLabel>{cycleHeading(dashboard)}</SectionLabel>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <SectionLabel>{cycleHeading(dashboard)}</SectionLabel>
+          <ProgrammePips seq={dashboard.cycle.seq} total={dashboard.programmeMonths} />
+        </div>
         <div className="mt-2">
           <CountsRow items={[{ tone: "ink", text: complianceLabel, strong: true }]} />
         </div>
@@ -152,6 +198,29 @@ export default async function MyMonthPage() {
             </Panel>
           ))
         )}
+      </div>
+
+      {/*
+        The feedback band, moved here from the student's home (ADR-0031). It
+        belongs with the history it describes, and it does not earn a nav item
+        of its own: strengthsAndWeaknesses is null for EVERY student in this
+        release, because O-5 blocks the AI provider decision and no evaluation
+        exists yet. A top-level destination whose only content is an empty
+        state teaches the student the app is empty.
+      */}
+      <div className="mt-8">
+        <SectionLabel>Strengths and areas to develop</SectionLabel>
+        <div className="mt-2">
+          <Panel>
+            {dashboard.strengthsAndWeaknesses === null ? (
+              <EmptyState title="No evaluation yet — your first summary appears after your month closes." />
+            ) : (
+              <p className="prose" style={{ color: "var(--ink)" }}>
+                {dashboard.strengthsAndWeaknesses}
+              </p>
+            )}
+          </Panel>
+        </div>
       </div>
     </div>
   );

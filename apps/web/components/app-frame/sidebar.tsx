@@ -74,7 +74,7 @@ const MENTOR_DESTINATIONS: readonly Destination[] = [
 
 const STUDENT_DESTINATIONS: readonly Destination[] = [
   { label: "Today", href: "/", icon: TodayIcon },
-  { label: "My month", href: "/my-month", icon: CyclesIcon },
+  { label: "My progress", href: "/my-progress", icon: CyclesIcon },
 ];
 
 /**
