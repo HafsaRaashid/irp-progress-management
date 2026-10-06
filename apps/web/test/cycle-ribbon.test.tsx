@@ -113,3 +113,43 @@ describe("CycleRibbon", () => {
     expect(bar).toHaveStyle({ height: "60%" });
   });
 });
+
+/**
+ * ADR-0032's load-bearing property for this component. The mentor's dashboard
+ * renders the same CycleRibbon and must come out of this slice unchanged, which
+ * holds only while the DEFAULT path is untouched.
+ */
+describe("CycleRibbon celebrate (ADR-0032 opt-in)", () => {
+  const localDays: RibbonDay[] = [
+    { date: "2026-07-10", mark: "ok" },
+    { date: "2026-07-13", mark: "late" },
+  ];
+
+  it("uses the plain load animation when celebrate is not passed", () => {
+    render(<CycleRibbon days={localDays} />);
+    for (const bar of screen.getAllByTestId("ribbon-bar")) {
+      expect(bar.className).toContain("ribbon-mark");
+      expect(bar.className).not.toContain("ribbon-mark-celebrate");
+    }
+  });
+
+  it("switches to the celebration animation when it is", () => {
+    render(<CycleRibbon days={localDays} celebrate />);
+    for (const bar of screen.getAllByTestId("ribbon-bar")) {
+      expect(bar.className).toContain("ribbon-mark-celebrate");
+    }
+  });
+
+  /**
+   * The celebration REPLACES the rise rather than stacking on it. Two
+   * animations on one element would race, and the second would restart the
+   * bar from scaleY(0) after the first had settled it — a visible double
+   * pump, and §10 budgets the load stagger separately from this moment.
+   */
+  it("replaces the load animation rather than stacking on it", () => {
+    render(<CycleRibbon days={localDays} celebrate />);
+    const classes = screen.getAllByTestId("ribbon-bar")[0]!.className.split(/\s+/);
+    expect(classes).toContain("ribbon-mark-celebrate");
+    expect(classes).not.toContain("ribbon-mark");
+  });
+});

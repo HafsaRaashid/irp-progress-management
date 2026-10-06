@@ -457,7 +457,7 @@ Restrained, with a few deliberate moments. 150–250ms, ease-out-quart. No bounc
 | Moment | Behaviour |
 |---|---|
 | Ribbon load | Marks fill left→right, staggered, **≤250ms total**. It's a list stagger, not a page-load sequence — the register drawing its own marks. |
-| Submission lands | The student's day mark fills. The action visibly enters the register. This is the one delight moment in the system. |
+| Submission lands | The student's day mark fills, with a single small overshoot and settle. The action visibly enters the register. This is the one delight moment in the system. **Implemented**, opt-in via `CycleRibbon`'s `celebrate` prop (ADR-0032) and set on the student instance only — the mentor's ribbon keeps the plain load animation. It **replaces** the per-mark rise rather than stacking on it, and the ≤250ms load-stagger budget above is separate and unchanged. |
 | Review state change | 180ms crossfade on the status pill. |
 | Everything else | 150ms, state only. |
 

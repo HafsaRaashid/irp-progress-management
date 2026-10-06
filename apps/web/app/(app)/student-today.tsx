@@ -131,6 +131,10 @@ export async function StudentToday({ displayName, role }: { displayName: string;
               days={toStudentRibbonDays([...dashboard.days], dashboard.today)}
               extraAfter={[...dashboard.extraAfter]}
               label={cycleHeading(dashboard)}
+              // §10's one delight moment. Set HERE and nowhere else:
+              // mentor-today.tsx renders the same component and must keep the
+              // default (ADR-0032).
+              celebrate
             />
           </div>
 

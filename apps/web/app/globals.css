@@ -348,6 +348,29 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   animation: ribbon-rise 160ms var(--ease-out-quart) both;
 }
 
+/* §10, moment 2: "Submission lands — the student's day mark fills. The action
+   visibly enters the register. This is the one delight moment in the system."
+
+   A single small overshoot and settle, NOT a spring: §10 permits "no bounce,
+   no elastic". 1.06 at the peak is about 2-3px on a 44px track — enough to
+   read as arrival, not enough to read as a bounce.
+
+   This is a SEPARATE moment from the load stagger and must not extend its
+   ≤250ms budget: .ribbon-mark's own ribbon-rise is untouched above, and
+   nothing here changes STAGGER_WINDOW_MS. Opt-in via CycleRibbon's
+   `celebrate` prop (ADR-0032), so the mentor's ribbon is unchanged because
+   the default path is unchanged. */
+@keyframes ribbon-celebrate {
+  0%   { transform: scaleY(0); }
+  70%  { transform: scaleY(1.06); }
+  100% { transform: scaleY(1); }
+}
+.ribbon-mark-celebrate {
+  transform-origin: bottom;
+  animation: ribbon-celebrate 320ms var(--ease-out-quart) both;
+}
+
+
 /* §10, moment 3: "Review state change — 180ms crossfade on the status pill."
    Replays only when the pill actually remounts, which the review page forces
    by keying the pill on the status it is rendering. */
@@ -373,5 +396,5 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
    The animations resolve to their end state rather than being cancelled. */
 @media (prefers-reduced-motion: reduce) {
   .btn, .control, .text-link { transition: none; }
-  .ribbon-mark, .pill-crossfade { animation-duration: 1ms; animation-delay: 0ms; }
+  .ribbon-mark, .ribbon-mark-celebrate, .pill-crossfade { animation-duration: 1ms; animation-delay: 0ms; }
 }
