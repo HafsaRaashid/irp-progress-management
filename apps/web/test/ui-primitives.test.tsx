@@ -116,6 +116,49 @@ describe("EmptyState", () => {
     rerender(<EmptyState title="No entries yet" />);
     expect(screen.queryByText("Submit today's update.")).not.toBeInTheDocument();
   });
+
+  /**
+   * ADR-0032's load-bearing property: the opt-in slots are OFF by default, so
+   * the mentor's rendering is unchanged because the DEFAULT PATH is unchanged.
+   * This is the characterisation test that stops the default drifting -- if a
+   * future change makes an icon render unconditionally, the mentor surfaces
+   * that use EmptyState (review, roster, cycles) change without anyone asking.
+   */
+  it("renders nothing extra when neither slot is supplied -- the default path ADR-0032 protects", () => {
+    const { container } = render(<EmptyState title="No entries yet" />);
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    // The whole subtree is the title and nothing else.
+    expect(container.textContent).toBe("No entries yet");
+  });
+
+  it("renders an icon and an action when given them", () => {
+    render(
+      <EmptyState
+        title="No entry for today yet."
+        icon={<svg data-testid="the-icon" />}
+        action={<button type="button">Submit today</button>}
+      />,
+    );
+    expect(screen.getByTestId("the-icon")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit today" })).toBeInTheDocument();
+  });
+
+  /**
+   * design-system §12: a glyph never carries meaning alone. The icon is
+   * decoration beside copy that already says the same thing, so it must be
+   * hidden from assistive technology rather than announced as a second,
+   * wordless version of the message.
+   */
+  it("hides the icon from assistive technology", () => {
+    const { container } = render(
+      <EmptyState title="No entry for today yet." icon={<svg data-testid="the-icon" />} />,
+    );
+    const wrapper = container.querySelector("[aria-hidden=\"true\"]");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper!.querySelector("[data-testid=\"the-icon\"]")).not.toBeNull();
+  });
 });
 
 describe("FieldLabel", () => {

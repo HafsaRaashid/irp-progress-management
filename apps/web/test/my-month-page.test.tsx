@@ -197,7 +197,7 @@ describe("MyMonthPage", () => {
 
     render(await MyMonthPage());
 
-    expect(screen.getByText("Nothing recorded this cycle yet.")).toBeInTheDocument();
+    expect(screen.getByText("Nothing recorded this month yet.")).toBeInTheDocument();
   });
 
   it("labels a null compliance rate '— compliance', not a bare dash, among the other labelled figures (Finding 6)", async () => {
@@ -267,7 +267,7 @@ describe("MyMonthPage", () => {
     render(await MyMonthPage());
 
     expect(screen.getByText("Your day history could not be loaded.")).toBeInTheDocument();
-    expect(screen.queryByText(/Nothing recorded this cycle yet\./)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Nothing recorded this month yet./)).not.toBeInTheDocument();
     // The dashboard heading and compliance rate still render -- only the
     // day-history section is affected by listMyDays failing.
     expect(screen.getByText(/Month 3 of 6/)).toBeInTheDocument();

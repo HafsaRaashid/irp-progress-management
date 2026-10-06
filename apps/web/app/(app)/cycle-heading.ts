@@ -1,4 +1,4 @@
-import { formatCivilDateLabel } from "./format-civil-date";
+import { formatCivilDateLabel, formatMonthDayLabel } from "./format-civil-date";
 
 /**
  * The subset of MyDashboard the heading reads. Structural, so the SDK type or
@@ -23,7 +23,11 @@ export interface CyclePositionLike {
  */
 export function cycleHeading(d: CyclePositionLike): string {
   if (d.cycle.seq !== null) {
-    return `Month ${String(d.cycle.seq)} of ${String(d.programmeMonths)} · ${formatCivilDateLabel(d.cycle.startDate)} – ${formatCivilDateLabel(d.cycle.endDate)}`;
+    // formatMonthDayLabel, not formatCivilDateLabel: this is a RANGE, and
+    // "Friday 10 July – Saturday 9 August" puts two weekday names in front of
+    // the student that mean nothing on a month boundary. The branch below
+    // names a SINGLE day and keeps its weekday, which §11's copy voice wants.
+    return `Month ${String(d.cycle.seq)} of ${String(d.programmeMonths)} · ${formatMonthDayLabel(d.cycle.startDate)} – ${formatMonthDayLabel(d.cycle.endDate)}`;
   }
   if (d.firstEvaluatedCycleStart !== null) {
     return `Your first evaluated month starts ${formatCivilDateLabel(d.firstEvaluatedCycleStart)}`;

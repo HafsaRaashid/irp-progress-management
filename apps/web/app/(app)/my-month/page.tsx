@@ -120,7 +120,7 @@ export default async function MyMonthPage() {
         ) : orderedDays.length === 0 ? (
           <Panel>
             <EmptyState
-              title="Nothing recorded this cycle yet."
+              title="Nothing recorded this month yet."
               hint="Your entries appear here as you submit them."
             />
           </Panel>

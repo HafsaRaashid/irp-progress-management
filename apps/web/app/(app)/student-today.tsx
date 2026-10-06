@@ -222,7 +222,7 @@ export async function StudentToday({ displayName, role }: { displayName: string;
           <div className="mt-2">
             <Panel>
               {dashboard.strengthsAndWeaknesses === null ? (
-                <EmptyState title="No evaluation yet — your first summary appears after your cycle closes." />
+                <EmptyState title="No evaluation yet — your first summary appears after your month closes." />
               ) : (
                 <p className="prose" style={{ color: "var(--ink)" }}>
                   {dashboard.strengthsAndWeaknesses}
