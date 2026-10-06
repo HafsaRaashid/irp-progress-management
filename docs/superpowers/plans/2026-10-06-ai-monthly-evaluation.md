@@ -1508,7 +1508,9 @@ there, that is correct; only `spec/openapi.yaml` should actually be staged.)
 
 **Interfaces:**
 - Consumes: `EvaluationService` (Task 4), `resolveStudent` (exported from `reviews.ts`, reused as-is).
-- Produces: the three registered routes; `ServerDeps.evaluationService: EvaluationService`.
+- Produces: the three registered routes; `ServerDeps.evaluationService: EvaluationService`;
+  `toApiEvaluation` exported from `routes/evaluations.ts` (Task 8 imports this for the batch
+  dashboard's per-student `evaluation` field — do not make it a private, unexported function).
 
 - [ ] **Step 1: Write the failing integration test**
 
@@ -1643,7 +1645,8 @@ import { UUID_PARAM, EVALUATION_GENERATE_QUERY, CYCLE_PARAM, EVALUATION_OVERRIDE
 
 type ApiEvaluation = components["schemas"]["Evaluation"];
 
-function toApiEvaluation(v: EvaluationView): ApiEvaluation {
+/** Exported: Task 8 reuses this exact mapping for the batch dashboard's per-student `evaluation` field, rather than re-deriving the same field-for-field copy in `dashboards.ts`. */
+export function toApiEvaluation(v: EvaluationView): ApiEvaluation {
   return {
     id: v.id,
     studentId: v.studentId,
@@ -2003,25 +2006,270 @@ git commit -m "feat(web): add Evaluate/Override actions to the Cycles page (FR-2
 
 ---
 
-### Task 8: Student-facing summary and e2e coverage
+### Task 8: Dashboard wiring — batch roster evaluations, student summary, and e2e coverage
+
+**Plan-fix note (folded into this task during Task 5's review, before Task 6 was dispatched):**
+the original version of this task wired only `studentDashboard`'s `strengthsAndWeaknesses`. Task
+5 added `evaluation` as a *required* field on `StudentCycleSummary` (the Cycles page's per-student
+row), which forced `apps/api/src/routes/dashboards.ts`'s `getBatchDashboardSummary` handler to
+hard-code `evaluation: null` just to keep typecheck green (done correctly, with an honest comment —
+see the route file). But no task ever replaced that hard-code with a real lookup, which would have
+left Task 7's whole Cycles-page feature permanently showing "Awaiting evaluation" even after a real
+generation. This task now wires **both** dashboard reads: `batchSummary`'s roster-wide `evaluation`
+field (new) and `studentDashboard`'s `strengthsAndWeaknesses` (original scope, unchanged below).
 
 **Files:**
-- Modify: `apps/api/src/services/dashboard-service.ts` (wire real `strengthsAndWeaknesses`)
+- Modify: `apps/api/src/db/evaluation-repo.ts` (two new batched read methods)
+- Modify: `apps/api/test/evaluation-repo.test.ts`
+- Modify: `apps/api/src/services/evaluation-service.ts` (extract the existing inline mapping in
+  `toView` into an exported pure function, `toEvaluationView`, so this task can reuse it without a
+  second `findOverride` call per roster row)
+- Modify: `apps/api/src/services/dashboard-service.ts` (wire real `evaluation` into `batchSummary`
+  and real `strengthsAndWeaknesses` into `studentDashboard`)
 - Test: `apps/api/test/dashboard-service.test.ts` (modify existing)
+- Modify: `apps/api/src/routes/dashboards.ts` (replace the Task 5 placeholder `evaluation: null`)
+- Modify: `apps/api/src/index.ts` (thread `evaluationRepo` into `createDashboardService`'s deps)
 - Modify: `apps/web/e2e/dashboard-flows.spec.ts` or a new `apps/web/e2e/evaluation-flows.spec.ts`
 
 **Interfaces:**
-- Consumes: `EvaluationRepo.findEvaluation` (Task 2) or equivalent read path, from
-  `dashboard-service.ts`'s `studentDashboard` function.
+- Consumes: `EvaluationRepo.findEvaluation` (Task 2); `toApiEvaluation`, exported from
+  `routes/evaluations.ts` (Task 6).
+- Produces: `EvaluationRepo.findEvaluationsForBatchCycle(batchId, seq)`,
+  `EvaluationRepo.findOverridesForEvaluations(evaluationIds)`; `evaluation-service.ts`'s exported
+  `toEvaluationView(evalRow, override)`; `StudentSummaryView.evaluation: EvaluationView | null`;
+  `StudentDashboardView.strengthsAndWeaknesses: string | null` (widened from the literal `null`
+  type it has today — the interface itself must change, not just the value it returns).
 
-- [ ] **Step 1: Read `dashboard-service.ts`'s `studentDashboard` function in full**
+- [ ] **Step 1: Read `dashboard-service.ts`'s `batchSummary` and `studentDashboard` functions, and
+  `evaluation-repo.ts`, in full**
 
-Find exactly where `strengthsAndWeaknesses: null` is currently hard-coded (per handoff.md: "the
-student My month page renders the designed empty state... rather than any fabricated score" — this
-is a literal `null` in the response builder, not a TODO). This task replaces that literal with a
-real lookup.
+Confirm the `summarise()` closure inside `batchSummary` (builds each `StudentSummaryView`) and the
+hard-coded `strengthsAndWeaknesses: null` inside `studentDashboard` (per handoff.md: "the student My
+month page renders the designed empty state... rather than any fabricated score" — a literal
+`null` in the response builder, not a TODO) match this task's description before writing code
+against them; both shift if an earlier task's review changed them.
 
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 2: Write the failing tests for the two new `EvaluationRepo` methods**
+
+```typescript
+// Add to apps/api/test/evaluation-repo.test.ts
+
+it("findEvaluationsForBatchCycle returns every evaluation for a batch's cycle, keyed by student, and nothing for an unmaterialised cycle", async () => {
+  const batch = await batchRepo.create({
+    name: `Batch ${Date.now()}`,
+    startDate: civilDate("2026-01-10"),
+    endDate: civilDate("2030-01-10"),
+  });
+  const studentA = await userRepo.create({
+    externalId: `a-${Date.now()}`, email: `a-${Date.now()}@dev.local`,
+    displayName: "Student A", role: "STUDENT",
+  });
+  const studentB = await userRepo.create({
+    externalId: `b-${Date.now()}`, email: `b-${Date.now()}@dev.local`,
+    displayName: "Student B", role: "STUDENT",
+  });
+
+  // Cycle 7 never evaluated for this batch: no Cycle row exists yet.
+  expect(await repo.findEvaluationsForBatchCycle(batch.id, 7)).toEqual([]);
+
+  const cycleId = await repo.upsertCycle(batch.id, 1, {
+    start: civilDate("2026-01-10"), end: civilDate("2026-02-09"),
+  });
+  const evalA = await repo.createEvaluation({
+    cycleId, studentId: studentA.id, attendance: 80, taskCompletion: 90,
+    contributionInitiative: 70, effortTime: 60, mentorEvaluation: 85,
+    performanceIndex: 79.5, summary: "Solid month.", modelVersion: "v1",
+  });
+
+  const rows = await repo.findEvaluationsForBatchCycle(batch.id, 1);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ id: evalA.id, studentId: studentA.id, cycleSeq: 1 });
+  // Student B was never evaluated this cycle — absent from the result, not a null entry.
+  expect(rows.some((r) => r.studentId === studentB.id)).toBe(false);
+});
+
+it("findOverridesForEvaluations returns only the overrides for the given ids, and [] for an empty input", async () => {
+  expect(await repo.findOverridesForEvaluations([])).toEqual([]);
+
+  const batch = await batchRepo.create({
+    name: `Batch ${Date.now()}`,
+    startDate: civilDate("2026-01-10"),
+    endDate: civilDate("2030-01-10"),
+  });
+  const student = await userRepo.create({
+    externalId: `ov-${Date.now()}`, email: `ov-${Date.now()}@dev.local`,
+    displayName: "Override Student", role: "STUDENT",
+  });
+  const cycleId = await repo.upsertCycle(batch.id, 1, {
+    start: civilDate("2026-01-10"), end: civilDate("2026-02-09"),
+  });
+  const evaluation = await repo.createEvaluation({
+    cycleId, studentId: student.id, attendance: 80, taskCompletion: 90,
+    contributionInitiative: 70, effortTime: 60, mentorEvaluation: 85,
+    performanceIndex: 79.5, summary: "Solid month.", modelVersion: "v1",
+  });
+  await repo.createOverride({
+    evaluationId: evaluation.id, mentorId: student.id, newScore: 90,
+    originalScore: 79.5, reason: "Strong finish.",
+  });
+
+  const overrides = await repo.findOverridesForEvaluations([evaluation.id, "00000000-0000-0000-0000-000000000000"]);
+  expect(overrides).toHaveLength(1);
+  expect(overrides[0]).toMatchObject({ evaluationId: evaluation.id, reason: "Strong finish." });
+});
+```
+
+- [ ] **Step 3: Run tests to verify they fail**
+
+Run: `DATABASE_URL=postgresql://irp:irp@127.0.0.1:5433/irp?schema=public pnpm --filter @irp/api test evaluation-repo -- --run`
+Expected: FAIL — the two methods don't exist yet.
+
+- [ ] **Step 4: Implement the two repo methods**
+
+Add to `EvaluationRepo`'s interface in `evaluation-repo.ts`:
+
+```typescript
+  /**
+   * Batched roster read for one batch/cycle — DashboardService.batchSummary's per-student
+   * `evaluation` field (matches the existing no-per-student-fan-out convention already used by
+   * `enrolmentsInRange`/`listDaysForStudents`). Empty array when the Cycle row was never
+   * materialised (nothing generated yet this cycle) — this is a read, it never calls upsertCycle.
+   */
+  findEvaluationsForBatchCycle(batchId: string, seq: number): Promise<EvaluationRecord[]>;
+  /** Batched override lookup paired with findEvaluationsForBatchCycle — one query for the whole roster, not one findOverride call per row. */
+  findOverridesForEvaluations(evaluationIds: string[]): Promise<OverrideRecord[]>;
+```
+
+Add to the object `createEvaluationRepo` returns:
+
+```typescript
+    async findEvaluationsForBatchCycle(batchId, seq) {
+      const rows = await prisma.evaluation.findMany({ where: { cycle: { batchId, seq } }, ...WITH_CYCLE_SEQ });
+      return rows.map(mapEvaluation);
+    },
+
+    async findOverridesForEvaluations(evaluationIds) {
+      if (evaluationIds.length === 0) return [];
+      const rows = await prisma.override.findMany({ where: { evaluationId: { in: evaluationIds } } });
+      return rows.map(mapOverride);
+    },
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `DATABASE_URL=postgresql://irp:irp@127.0.0.1:5433/irp?schema=public pnpm --filter @irp/api test evaluation-repo -- --run`
+Expected: PASS, 5/5 (3 existing + 2 new).
+
+- [ ] **Step 6: Extract the pure mapper in `evaluation-service.ts`**
+
+`toView` currently inlines the `EvaluationRecord` + `OverrideRecord | null` → `EvaluationView`
+mapping after its own `findOverride` call. Pull the mapping itself out as an exported, non-async
+function so this task can reuse it against a *batched* override lookup instead of one `findOverride`
+call per roster row:
+
+```typescript
+// evaluation-service.ts — add this import alongside the existing EvaluationRecord one:
+import type { EvaluationRecord, EvaluationRepo, OverrideRecord } from "../db/evaluation-repo.js";
+
+// Replace the body of toView with a thin wrapper around the new exported function:
+export function toEvaluationView(evalRow: EvaluationRecord, override: OverrideRecord | null): EvaluationView {
+  return {
+    id: evalRow.id,
+    studentId: evalRow.studentId,
+    cycleSeq: evalRow.cycleSeq,
+    attendance: evalRow.attendance,
+    taskCompletion: evalRow.taskCompletion,
+    contributionInitiative: evalRow.contributionInitiative,
+    effortTime: evalRow.effortTime,
+    mentorEvaluation: evalRow.mentorEvaluation,
+    performanceIndex: Number(evalRow.performanceIndex),
+    summary: evalRow.summary,
+    modelVersion: evalRow.modelVersion,
+    override: override === null ? null : {
+      newScore: Number(override.newScore), originalScore: Number(override.originalScore), reason: override.reason,
+    },
+  };
+}
+
+async function toView(evalRow: EvaluationRecord): Promise<EvaluationView> {
+  const override = await deps.evaluationRepo.findOverride(evalRow.id);
+  return toEvaluationView(evalRow, override);
+}
+```
+
+Run `DATABASE_URL=postgresql://irp:irp@127.0.0.1:5433/irp?schema=public pnpm --filter @irp/api test evaluation-service -- --run` after this change — Expected: PASS, unchanged (pure refactor, `toView`'s external behaviour is identical).
+
+- [ ] **Step 7: Write the failing test for `batchSummary`'s `evaluation` field**
+
+```typescript
+// Add to apps/api/test/dashboard-service.test.ts
+it("surfaces each student's evaluation (with override, when one exists) for an evaluated cycle, and null for a student with none", async () => {
+  // Arrange a batch with two enrolled students. Generate (via a direct
+  // evaluationRepo.upsertCycle + createEvaluation call, matching
+  // evaluation-repo.test.ts's own pattern) an Evaluation for student A's
+  // current cycle only, plus an Override on it; leave student B unevaluated.
+  // Act: call batchSummary for that cycle's seq.
+  // Assert: student A's row has `evaluation.override` matching the override
+  // just created; student B's row has `evaluation: null`.
+});
+
+it("returns evaluation: null for every student when the batch has no evaluated cycle yet", async () => {
+  // Existing behaviour (seq === null branch) — pin it explicitly now that
+  // the field is no longer absent from the type.
+});
+```
+
+Write the actual arrange/act/assert code once you've read `dashboard-service.test.ts`'s existing
+fixture-setup conventions (Step 1) — do not guess at the exact helper names from this plan alone.
+
+- [ ] **Step 8: Run test to verify it fails**
+
+Run: `DATABASE_URL=postgresql://irp:irp@127.0.0.1:5433/irp?schema=public pnpm --filter @irp/api test dashboard-service -- --run`
+Expected: FAIL — `StudentSummaryView` has no `evaluation` field yet.
+
+- [ ] **Step 9: Implement `batchSummary`'s wiring**
+
+In `dashboard-service.ts`:
+
+```typescript
+import type { EvaluationRecord, EvaluationRepo, OverrideRecord } from "../db/evaluation-repo.js";
+import { toEvaluationView, type EvaluationView } from "./evaluation-service.js";
+```
+
+Add `evaluation: EvaluationView | null;` to `StudentSummaryView`. Add
+`evaluationRepo: Pick<EvaluationRepo, "findEvaluation" | "findEvaluationsForBatchCycle" | "findOverridesForEvaluations">;`
+to `createDashboardService`'s `deps` parameter, alongside `batchRepo`/`dayService`.
+
+Inside `summarise()`, before the `return { ... students: ... }` block:
+
+```typescript
+        const evaluationsByStudent = new Map<string, EvaluationRecord>();
+        const overridesByEvaluationId = new Map<string, OverrideRecord>();
+        if (seq !== null) {
+          const evaluations = await deps.evaluationRepo.findEvaluationsForBatchCycle(batchId, seq);
+          for (const e of evaluations) evaluationsByStudent.set(e.studentId, e);
+          const overrides = await deps.evaluationRepo.findOverridesForEvaluations(evaluations.map((e) => e.id));
+          for (const o of overrides) overridesByEvaluationId.set(o.evaluationId, o);
+        }
+```
+
+Then in the `[...seen.values()].map((e) => { ... })` body, add to the returned object:
+
+```typescript
+              evaluation: evaluationsByStudent.has(e.studentId)
+                ? toEvaluationView(
+                    evaluationsByStudent.get(e.studentId)!,
+                    overridesByEvaluationId.get(evaluationsByStudent.get(e.studentId)!.id) ?? null,
+                  )
+                : null,
+```
+
+- [ ] **Step 10: Run test to verify it passes**
+
+Run: `DATABASE_URL=postgresql://irp:irp@127.0.0.1:5433/irp?schema=public pnpm --filter @irp/api test dashboard-service -- --run`
+Expected: PASS, both new cases plus the full existing suite.
+
+- [ ] **Step 11: Write the failing test for `studentDashboard`'s `strengthsAndWeaknesses`**
 
 ```typescript
 // Add to apps/api/test/dashboard-service.test.ts
@@ -2029,8 +2277,8 @@ it("surfaces the latest evaluation's summary once one exists for the student's c
   // Arrange a student, a batch, and — via the real evaluation flow or a direct
   // Prisma insert matching evaluation-repo.test.ts's pattern — an Evaluation
   // row for this student's current cycle with a known summary string.
-  // Then assert getMyDashboard-equivalent service call's strengthsAndWeaknesses
-  // equals that string, not null.
+  // Then assert studentDashboard's strengthsAndWeaknesses equals that
+  // string, not null.
 });
 
 it("stays null when no evaluation exists yet for the student's current cycle", async () => {
@@ -2039,42 +2287,64 @@ it("stays null when no evaluation exists yet for the student's current cycle", a
 });
 ```
 
-Write the actual arrange/act/assert code once you have read the real function and its existing
-test file's fixture-setup conventions in Step 1 — do not guess at `dashboard-service.ts`'s exact
-internal shape from this plan alone.
-
-- [ ] **Step 3: Run test to verify it fails**
+- [ ] **Step 12: Run test to verify it fails**
 
 Run: `DATABASE_URL=postgresql://irp:irp@127.0.0.1:5433/irp?schema=public pnpm --filter @irp/api test dashboard-service -- --run`
 Expected: FAIL on the first new case (still hard-coded null), PASS on the second (already true).
 
-- [ ] **Step 4: Implement**
+- [ ] **Step 13: Implement `studentDashboard`'s wiring**
 
 Replace the hard-coded `strengthsAndWeaknesses: null` with a lookup: resolve the student's current
 cycle bounds (this function already does this for other fields — reuse its own `bounds`/`seq`
-locals rather than recomputing), call `evaluationRepo.findEvaluation` (requires threading
-`evaluationRepo` into `DashboardService`'s deps — add it alongside `batchRepo`/`dayService`), and
-return the evaluation's `summary` if one exists, else `null`.
+locals rather than recomputing), call `evaluationRepo.findEvaluation`, and return the evaluation's
+`summary` if one exists, else `null`. Widen `StudentDashboardView.strengthsAndWeaknesses`'s type
+from the literal `null` to `string | null` — the interface, not only the returned value, must
+change, or this will fail typecheck the moment a real string is returned.
 
-- [ ] **Step 5: Run test to verify it passes**
+- [ ] **Step 14: Run test to verify it passes**
 
 Run: `DATABASE_URL=postgresql://irp:irp@127.0.0.1:5433/irp?schema=public pnpm --filter @irp/api test dashboard-service -- --run`
-Expected: PASS, both new cases plus the full existing suite.
+Expected: PASS, every case in the file.
 
-- [ ] **Step 6: Update `index.ts`/`server.ts` wiring**
+- [ ] **Step 15: Update `index.ts` wiring**
 
-`createDashboardService` now needs `evaluationRepo` in its deps — add it at both construction call
-sites (`index.ts`), matching how `evaluationRepo` was already constructed in Task 6.
+`createDashboardService` now needs `evaluationRepo` in its deps — add it at the construction call
+site in `index.ts`, reusing the same `evaluationRepo` local Task 6 already constructs there (do not
+construct a second instance).
 
-- [ ] **Step 7: Add e2e coverage**
+- [ ] **Step 16: Replace the Task 5 placeholder in `dashboards.ts`**
+
+```typescript
+import { toApiEvaluation } from "./evaluations.js";
+```
+
+Replace:
+
+```typescript
+          // Spec addition (FR-22/23): `evaluation` is null until a later
+          // task wires a real per-student evaluation lookup into
+          // DashboardService.batchSummary. Always null here is honest, not
+          // a stub lie — no evaluation lookup has been wired in yet.
+          evaluation: null,
+```
+
+with:
+
+```typescript
+          evaluation: s.evaluation === null ? null : toApiEvaluation(s.evaluation),
+```
+
+- [ ] **Step 17: Add e2e coverage**
 
 Add one Playwright case: sign in as mentor, navigate to Cycles, evaluate a student in a closed
 cycle (use a seeded persona whose first cycle has already closed — check `run-seed.ts`/
 `@irp/fixtures` for one, the same way `mentor-flows.spec.ts` already picks personas by name), assert
-the score renders; then (same test or a second one) sign in as that student, confirm
-"Strengths and areas to develop" now shows real prose instead of the empty state.
+the score renders in the Cycles page roster row (not just in a direct API response — this is the
+case that proves Step 9's wiring, not only Task 7's UI); then (same test or a second one) sign in as
+that student, confirm "Strengths and areas to develop" now shows real prose instead of the empty
+state.
 
-- [ ] **Step 8: Run the full verification suite**
+- [ ] **Step 18: Run the full verification suite**
 
 Run: `DATABASE_URL=postgresql://irp:irp@127.0.0.1:5433/irp?schema=public pnpm --filter @irp/api test -- --run && pnpm --filter @irp/web test -- --run && pnpm --filter @irp/web typecheck && AUTH_DEV_BYPASS=false pnpm --filter @irp/web build && pnpm --filter @irp/web typecheck`
 
@@ -2085,11 +2355,11 @@ cannot pass against a real AI call; ledger this as a finding for the final revie
 inventing a mid-plan mock-server workaround. A manual run against real credentials may be the only
 way to exercise this path before merge, mirroring NFR-15's own manual-gate treatment.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 19: Commit**
 
 ```bash
-git add apps/api/src/services/dashboard-service.ts apps/api/test/dashboard-service.test.ts apps/api/src/index.ts apps/web/e2e/
-git commit -m "feat(api): surface the real evaluation summary on the student dashboard (FR-22, FR-29)"
+git add apps/api/src/db/evaluation-repo.ts apps/api/test/evaluation-repo.test.ts apps/api/src/services/evaluation-service.ts apps/api/src/services/dashboard-service.ts apps/api/test/dashboard-service.test.ts apps/api/src/routes/dashboards.ts apps/api/src/index.ts apps/web/e2e/
+git commit -m "feat(api): surface real evaluation data on both dashboard reads (FR-22, FR-29)"
 ```
 
 ---
