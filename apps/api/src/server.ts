@@ -23,10 +23,12 @@ import { reviewRoutes } from "./routes/reviews.js";
 import { userRoutes } from "./routes/users.js";
 import { adminActionRoutes } from "./routes/admin-actions.js";
 import { dashboardRoutes } from "./routes/dashboards.js";
+import { evaluationRoutes } from "./routes/evaluations.js";
 import type { DayService } from "./services/day-service.js";
 import type { RosterService } from "./services/roster-service.js";
 import type { DashboardService } from "./services/dashboard-service.js";
 import type { NotificationService } from "./services/notification-service.js";
+import type { EvaluationService } from "./services/evaluation-service.js";
 
 export interface ServerDeps {
   config: AppConfig;
@@ -39,6 +41,7 @@ export interface ServerDeps {
   rosterService: RosterService;
   dashboardService: DashboardService;
   notificationService: NotificationService;
+  evaluationService: EvaluationService;
   getKey: JWTVerifyGetKey;
   tracerProvider: NodeTracerProvider;
   // Handed to userRoutes for exactly one call site — see the comment there.
@@ -90,6 +93,11 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
     mentorRecordRepo: deps.mentorRecordRepo,
     dayService: deps.dayService,
     notificationService: deps.notificationService,
+  });
+  await app.register(evaluationRoutes, {
+    evaluationService: deps.evaluationService,
+    userRepo: deps.userRepo,
+    batchRepo: deps.batchRepo,
   });
   await app.register(userRoutes, {
     userRepo: deps.userRepo,

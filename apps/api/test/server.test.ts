@@ -15,6 +15,7 @@ import { unusedDayService } from "./helpers/fake-day-service.js";
 import { unusedRosterService } from "./helpers/fake-roster-service.js";
 import { unusedDashboardService } from "./helpers/fake-dashboard-service.js";
 import { unusedNotificationService } from "./helpers/fake-notification-service.js";
+import { unusedEvaluationService } from "./helpers/fake-evaluation-service.js";
 import { unusedPrisma } from "./helpers/fake-prisma.js";
 import { problemSchema } from "./helpers/problem-schema.js";
 import { getLocalKeySet, signToken, testIssuer, testAudience } from "./helpers/keys.js";
@@ -42,6 +43,7 @@ beforeAll(async () => {
     rosterService: unusedRosterService(),
     dashboardService: unusedDashboardService(),
     notificationService: unusedNotificationService(),
+    evaluationService: unusedEvaluationService(),
     getKey,
     tracerProvider: createTracerProvider(new InMemorySpanExporter()),
     prisma: unusedPrisma(),

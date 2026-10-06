@@ -17,6 +17,9 @@ import { createRosterService } from "./services/roster-service.js";
 import { createDashboardService } from "./services/dashboard-service.js";
 import { createNotificationService } from "./services/notification-service.js";
 import { createTeamsWebhookSender, createSmtpEmailSender } from "./services/notification-senders.js";
+import { createEvaluationRepo } from "./db/evaluation-repo.js";
+import { createAzureOpenAiEvaluator } from "./services/evaluation-ai-client.js";
+import { createEvaluationService } from "./services/evaluation-service.js";
 
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -37,6 +40,11 @@ await bootstrap({
     const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
     const rosterService = createRosterService({ batchRepo, dayService, mentorRecordRepo });
     const dashboardService = createDashboardService({ batchRepo, dayService });
+    const evaluationRepo = createEvaluationRepo(prisma);
+    const aiClient = createAzureOpenAiEvaluator(config.azureOpenAi, fetch);
+    const evaluationService = createEvaluationService({
+      batchRepo, entryRepo, mentorRecordRepo, absenceRepo, evaluationRepo, aiClient, userRepo,
+    });
     const getKey = createRemoteJWKSet(new URL(config.jwksUri));
     const tracerProvider = createTracerProvider(selectSpanExporter(process.env));
 
@@ -55,7 +63,8 @@ await bootstrap({
 
     const app = await buildServer({
       config, userRepo, entryRepo, absenceRepo, batchRepo, mentorRecordRepo,
-      dayService, rosterService, dashboardService, notificationService, getKey, tracerProvider, prisma,
+      dayService, rosterService, dashboardService, notificationService, evaluationService,
+      getKey, tracerProvider, prisma,
     });
 
     registerShutdown({

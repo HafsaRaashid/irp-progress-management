@@ -138,3 +138,27 @@ export const STUDENT_DATE_PARAM = {
     date: { type: "string", format: "date" },
   },
 } as const;
+
+export const EVALUATION_GENERATE_QUERY = {
+  type: "object",
+  required: ["cycle"],
+  additionalProperties: false,
+  properties: { cycle: { type: "integer", minimum: 1 } },
+} as const;
+
+export const CYCLE_PARAM = {
+  type: "object",
+  required: ["id", "cycle"],
+  additionalProperties: false,
+  properties: { id: { type: "string", format: "uuid" }, cycle: { type: "integer", minimum: 1 } },
+} as const;
+
+export const EVALUATION_OVERRIDE_BODY = {
+  type: "object",
+  required: ["newScore", "reason"],
+  additionalProperties: false,
+  properties: {
+    newScore: { type: "number", minimum: 0, maximum: 100 },
+    reason: { type: "string", minLength: 1, maxLength: 1000 },
+  },
+} as const;
