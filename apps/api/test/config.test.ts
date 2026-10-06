@@ -88,3 +88,49 @@ describe("loadConfig", () => {
     expect(c.smtp).toBeUndefined();
   });
 });
+
+describe("loadConfig — Azure OpenAI", () => {
+  const base = {
+    DATABASE_URL: "postgresql://x", JWKS_URI: "https://x", JWT_ISSUER: "https://x", JWT_AUDIENCE: "x",
+  };
+
+  it("leaves azureOpenAi undefined when unset", () => {
+    expect(loadConfig(base).azureOpenAi).toBeUndefined();
+  });
+
+  it("is all-or-nothing: a partial config is treated as fully absent", () => {
+    const config = loadConfig({
+      ...base,
+      AZURE_OPENAI_ENDPOINT: "https://example.openai.azure.com",
+      // AZURE_OPENAI_API_KEY deliberately missing
+      AZURE_OPENAI_DEPLOYMENT: "gpt-4o-mini",
+    });
+    expect(config.azureOpenAi).toBeUndefined();
+  });
+
+  it("loads all four fields when fully set", () => {
+    const config = loadConfig({
+      ...base,
+      AZURE_OPENAI_ENDPOINT: "https://example.openai.azure.com",
+      AZURE_OPENAI_API_KEY: "secret",
+      AZURE_OPENAI_DEPLOYMENT: "gpt-4o-mini",
+      AZURE_OPENAI_API_VERSION: "2024-10-21",
+    });
+    expect(config.azureOpenAi).toEqual({
+      endpoint: "https://example.openai.azure.com",
+      apiKey: "secret",
+      deployment: "gpt-4o-mini",
+      apiVersion: "2024-10-21",
+    });
+  });
+
+  it("defaults the API version when the other three are set", () => {
+    const config = loadConfig({
+      ...base,
+      AZURE_OPENAI_ENDPOINT: "https://example.openai.azure.com",
+      AZURE_OPENAI_API_KEY: "secret",
+      AZURE_OPENAI_DEPLOYMENT: "gpt-4o-mini",
+    });
+    expect(config.azureOpenAi?.apiVersion).toBe("2024-10-21");
+  });
+});

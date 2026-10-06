@@ -229,3 +229,60 @@ export class InvalidCycleError extends DomainError {
     super(detail);
   }
 }
+
+export class CycleNotClosedError extends DomainError {
+  readonly code = "cycle-not-closed";
+  readonly status = 409;
+  readonly title = "Cycle has not closed";
+  constructor(endDate: string) {
+    super(`This cycle does not close until ${endDate} — it cannot be evaluated yet (FR-22).`);
+  }
+}
+
+export class EvaluationExistsError extends DomainError {
+  readonly code = "evaluation-exists";
+  readonly status = 409;
+  readonly title = "Already evaluated";
+  constructor(evaluationId: string) {
+    super(`This cycle already has an evaluation (${evaluationId}) — generation runs once per cycle.`);
+  }
+}
+
+export class EnrolmentDoesNotSpanCycleError extends DomainError {
+  readonly code = "enrolment-does-not-span-cycle";
+  readonly status = 409;
+  readonly title = "Not enrolled for the whole cycle";
+  constructor(studentId: string) {
+    super(`Student ${studentId} was not enrolled in this batch for the whole cycle — not evaluated for it (FR-27).`);
+  }
+}
+
+export class EvaluationNotFoundError extends DomainError {
+  readonly code = "evaluation-not-found";
+  readonly status = 404;
+  readonly title = "Evaluation not found";
+  constructor(id: string) {
+    super(`No evaluation exists with id ${id}.`);
+  }
+}
+
+// ASSUMPTION: O-5 — these two map an Azure OpenAI call failure to a
+// client-facing response; the provider itself is the O-5 override (see
+// docs/superpowers/specs/2026-10-06-ai-monthly-evaluation-design.md §0).
+export class AiProviderUnavailableError extends DomainError {
+  readonly code = "ai-provider-unavailable";
+  readonly status = 503;
+  readonly title = "Evaluation service unavailable";
+  constructor(detail: string) {
+    super(detail);
+  }
+}
+
+export class AiResponseInvalidError extends DomainError {
+  readonly code = "ai-response-invalid";
+  readonly status = 502;
+  readonly title = "Evaluation provider returned an invalid response";
+  constructor(detail: string) {
+    super(detail);
+  }
+}

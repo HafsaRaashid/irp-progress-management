@@ -8,6 +8,13 @@ export interface SmtpConfig {
   fromEmail: string;
 }
 
+export interface AzureOpenAiConfig {
+  endpoint: string;
+  apiKey: string;
+  deployment: string;
+  apiVersion: string;
+}
+
 export interface AppConfig {
   port: number;
   databaseUrl: string;
@@ -22,6 +29,7 @@ export interface AppConfig {
   teamsWebhookUrl: string | undefined;
   smtp: SmtpConfig | undefined;
   webBaseUrl: string;
+  azureOpenAi: AzureOpenAiConfig | undefined;
 }
 
 const REQUIRED_ENV_NAMES = {
@@ -71,6 +79,7 @@ export function loadConfig(env: Env): AppConfig {
     teamsWebhookUrl: env.TEAMS_WEBHOOK_URL,
     smtp: loadSmtpConfig(env),
     webBaseUrl: env.WEB_BASE_URL ?? "http://localhost:3100",
+    azureOpenAi: loadAzureOpenAiConfig(env),
   };
 }
 
@@ -87,4 +96,19 @@ function loadSmtpConfig(env: Env): SmtpConfig | undefined {
   if (!Number.isInteger(port) || port <= 0) return undefined;
 
   return { host: SMTP_HOST, port, user: SMTP_USER, pass: SMTP_PASS, fromEmail: NOTIFICATIONS_FROM_EMAIL };
+}
+
+/**
+ * All-or-nothing, same principle as loadSmtpConfig: a partial config is
+ * treated as fully absent rather than booting a half-working AI client.
+ */
+function loadAzureOpenAiConfig(env: Env): AzureOpenAiConfig | undefined {
+  const { AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION } = env;
+  if (!AZURE_OPENAI_ENDPOINT || !AZURE_OPENAI_API_KEY || !AZURE_OPENAI_DEPLOYMENT) return undefined;
+  return {
+    endpoint: AZURE_OPENAI_ENDPOINT,
+    apiKey: AZURE_OPENAI_API_KEY,
+    deployment: AZURE_OPENAI_DEPLOYMENT,
+    apiVersion: AZURE_OPENAI_API_VERSION ?? "2024-10-21",
+  };
 }
