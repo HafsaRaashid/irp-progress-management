@@ -3,12 +3,12 @@ import { graceDeadlineFor, isWeekday, submissionWindow } from "@irp/core";
 import { apiClient } from "@/lib/api-client";
 import { CycleRibbon } from "@/components/cycle-ribbon/cycle-ribbon";
 import { toStudentRibbonDays } from "@/lib/ribbon";
-import { PageTitle } from "@/components/ui/page-title";
 import { Panel } from "@/components/ui/panel";
 import { SectionLabel } from "@/components/ui/section-label";
 import { CountsRow } from "@/components/ui/counts-row";
 import { StatusPill } from "@/components/ui/status-pill";
 import { EmptyState } from "@/components/ui/empty-state";
+import { GreetingBand } from "./greeting-band";
 import { EntryComposer } from "./entry-composer";
 import { AbsenceToggle } from "./absence-toggle";
 import { cycleHeading } from "./cycle-heading";
@@ -90,7 +90,15 @@ export async function StudentToday({ displayName, role }: { displayName: string;
 
   return (
     <div>
-      <PageTitle>Today</PageTitle>
+      {/*
+        The greeting replaces a bare <PageTitle>Today</PageTitle> (§8.2). It
+        lives in the page, not the shared frame -- see greeting-band.tsx. The
+        dashboard may have failed to load, in which case there is no server
+        civil date to print and the band is skipped rather than guessed at:
+        a greeting dated from the browser's clock would be wrong in exactly
+        the timezone this system cares about.
+      */}
+      {dashboard !== undefined && <GreetingBand today={dashboard.today} />}
       {/*
         Playwright's sign-in chain (e2e/signin.spec.ts) asserts
         data-testid="user-name" AND data-testid="user-role" on every role

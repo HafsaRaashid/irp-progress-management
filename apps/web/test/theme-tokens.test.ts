@@ -61,8 +61,12 @@ describe("globals.css dark token blocks", () => {
     const [block] = darkBlocks(css);
     expect(block).toContain("--bg: #121212");
     expect(block).toContain("--st-missed: #ed7473");
-    // 13 declarations in §3.3's dark table.
-    expect(block!.match(/--[a-z-]+:/g)).toHaveLength(13);
+    // 15 declarations in §3.3's dark table: the 13 original tokens plus the
+    // two greeting-band gradient stops added with the student refresh. They
+    // live INSIDE the markers deliberately -- outside, the two copies would
+    // escape the byte-identity check above, and two unchecked copies of a
+    // themed value is exactly the drift that check exists to prevent.
+    expect(block!.match(/--[a-z-]+:/g)).toHaveLength(15);
   });
 });
 
@@ -195,6 +199,13 @@ describe("WCAG contrast", () => {
     ["primary", "bg", 3, ":focus-visible ring"],
     ["primary", "surface", 3, "the ribbon's today ring"],
     ["st-missed", "surface", 3, ".btn-danger border"],
+    // The student greeting band. Text sits directly on the gradient, so BOTH
+    // stops are measured -- a ratio against a gradient has no single value,
+    // which is also why design-system §2 bans gradient TEXT outright.
+    ["ink", "greeting-from", 4.5, "the greeting salutation"],
+    ["ink", "greeting-to", 4.5, "the greeting salutation, far stop"],
+    ["ink-muted", "greeting-from", 4.5, "the greeting date line"],
+    ["ink-muted", "greeting-to", 4.5, "the greeting date line, far stop"],
   ];
 
   /**
@@ -210,8 +221,8 @@ describe("WCAG contrast", () => {
     expect(light["st-review"]).toBeUndefined();
   });
 
-  it("covers 30 pairs per theme", () => {
-    expect(PAIRS).toHaveLength(30);
+  it("covers 34 pairs per theme", () => {
+    expect(PAIRS).toHaveLength(34);
   });
 
   for (const [themeName, tokens] of [["light", light], ["dark", dark]] as const) {

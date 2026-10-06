@@ -68,6 +68,24 @@ against a deliberately broken token, not merely asserted.
 | `--primary` | `oklch(0.469 0.145 253.6)` | `#045aa9` | **Bistec slot — filled** (ADR-0030). Cerulean ink, sampled from the brand mark. Primary actions, selection, focus — 6.91:1 |
 | `--primary-weak` | `oklch(0.95 0.022 253.4)` | `#e5f0fd` | Selected rows, active nav, primary-tinted fills. |
 | `--brand-card` | — | `#ffffff` | The card behind the Bistec Hearts Academy logo. **Theme-invariant** — see below. |
+| `--greeting-from` | `oklch(0.95 0.024 253.4)` | `#e4f0ff` | The student greeting band's gradient, near stop. **That element only.** |
+| `--greeting-to` | `oklch(0.95 0.024 225)` | `#def2fb` | The same gradient's far stop. Clamped to 225° — see below. |
+
+**The greeting gradient is clamped to 215–240°, and the clamp is load-bearing.** The brand mark's
+own gradient runs 253°→223° and tails into a teal at **168.6°**, which is *inside* the 140–170°
+band reserved for `--st-ok`. A gradient that followed the asset honestly to its end would run into
+the status-green fence. `--greeting-from` therefore sits on `--primary`'s own hue so the band reads
+as the brand colour opening out, and `--greeting-to` stops at 225°.
+
+Both stops are gated against `--ink` and `--ink-muted` in `theme-tokens.test.ts`, because text sits
+directly on the gradient and a ratio against a gradient has no single value — which is also why §2
+bans gradient *text* outright. They belong to the greeting band and nothing else; anything else
+wanting a tinted fill is a new design decision, not a reuse of these.
+
+Adding them moved the dark table from 13 tokens to **15**, which `theme-tokens.test.ts` asserts.
+They sit *inside* the `dark-tokens` markers deliberately: outside, the two copies would escape the
+byte-identity check, and two unchecked copies of a themed value is the drift that check exists to
+prevent.
 
 `--brand-card` is the only token that is **identical in light and dark**, by never being
 overridden. **Why:** the brand lockup is a supplied asset whose own internal contrast is not
@@ -141,6 +159,8 @@ toward indigo, they do not warm.
 | `--ink-muted` | `oklch(0.74 0.014 272)` | `#a7aab4` |
 | `--primary` | `oklch(0.72 0.12 253.5)` | `#6da8ee` |
 | `--primary-weak` | `oklch(0.30 0.046 253.4)` | `#1d2f44` |
+| `--greeting-from` | `oklch(0.30 0.048 253.4)` | `#1c2f45` |
+| `--greeting-to` | `oklch(0.30 0.048 225)` | `#0c3340` |
 
 Status colours are **re-tuned, not reused** — see §3.2.
 
@@ -169,7 +189,7 @@ Dark is user-reachable as of ADR-0021, selected by `data-theme` on `<html>`:
   **native** controls — the `type="date"` calendar indicator, scrollbars, `<select>`
   dropdowns — which are drawn by the browser, not by us, and so are not reachable by any
   token. Without it, dark mode paints a dark calendar icon on a dark field. It sits outside
-  the `dark-tokens:start`/`:end` markers, since those are asserted to hold exactly the 13
+  the `dark-tokens:start`/`:end` markers, since those are asserted to hold exactly the 15
   tokens above.
 
 ### 3.4 The Bistec slot

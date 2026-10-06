@@ -41,6 +41,16 @@
   --primary: #045aa9;
   --primary-weak: #e5f0fd;
 
+  /* The student greeting band's gradient, and nothing else -- not a general
+     surface. --greeting-from sits on --primary's own hue (253.4) so the band
+     reads as the brand colour opening out; --greeting-to is clamped to 225.
+     The clamp is LOAD-BEARING, not stylistic: the real logo gradient runs
+     down to 168.6 degrees, which is INSIDE the 140-170 band reserved for
+     --st-ok. Both stops are gated against --ink and --ink-muted in
+     test/theme-tokens.test.ts. */
+  --greeting-from: #e4f0ff;
+  --greeting-to: #def2fb;
+
   --st-ok: #267b4c;
   --st-late: #9f5c0c;
   --st-absent: #6d717e;
@@ -103,6 +113,8 @@
     --st-late: #eeac53;
     --st-absent: #9a9eaa;
     --st-missed: #ed7473;
+    --greeting-from: #1c2f45;
+    --greeting-to: #0c3340;
     /* dark-tokens:end */
   }
 }
@@ -126,6 +138,8 @@
   --st-late: #eeac53;
   --st-absent: #9a9eaa;
   --st-missed: #ed7473;
+  --greeting-from: #1c2f45;
+  --greeting-to: #0c3340;
   /* dark-tokens:end */
 }
 
@@ -342,6 +356,18 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   to { opacity: 1; }
 }
 .pill-crossfade { animation: pill-fade 180ms var(--ease-out-quart) both; }
+
+/* The student greeting band (design-system §8.2). A FILL, not a card, so it
+   carries no border -- §5 forbids a 1px border and a >=16px blur shadow on the
+   same element, and this has neither. Warm-zone padding per §5 (24-32px) and
+   the panel radius, so it sits in the same rhythm as the ribbon below it.
+   Both stops are tokens: every colour in apps/web resolves through one, and a
+   literal would not re-theme. */
+.greeting-band {
+  border-radius: var(--radius-panel);
+  padding: 24px 28px;
+  background: linear-gradient(100deg, var(--greeting-from), var(--greeting-to));
+}
 
 /* §10: reduce → "all of the above become instant or a plain crossfade."
    The animations resolve to their end state rather than being cancelled. */
