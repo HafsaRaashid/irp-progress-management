@@ -76,6 +76,11 @@ export const dashboardRoutes: FastifyPluginAsync<{
           student: s.student,
           counts: toApiCycleCounts(s.counts),
           reviewProgress: { ...s.reviewProgress },
+          // Spec addition (FR-22/23): `evaluation` is null until a later
+          // task wires a real per-student evaluation lookup into
+          // DashboardService.batchSummary. Always null here is honest, not
+          // a stub lie — no evaluation lookup has been wired in yet.
+          evaluation: null,
         })),
       };
     },
