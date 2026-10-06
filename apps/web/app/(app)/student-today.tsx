@@ -12,6 +12,7 @@ import { GreetingBand } from "./greeting-band";
 import { EntryComposer } from "./entry-composer";
 import { AbsenceToggle } from "./absence-toggle";
 import { cycleHeading } from "./cycle-heading";
+import { streakFor, streakLabel } from "./streak";
 import { formatCivilDateLabel, formatWeekdayName } from "./format-civil-date";
 
 // §11's deadline copy ("You can still submit for {date} until …") is always
@@ -133,7 +134,19 @@ export async function StudentToday({ displayName, role }: { displayName: string;
             />
           </div>
 
-          <div className="mb-8">
+          {/*
+            The streak chip sits BESIDE CountsRow, never inside it: CountsRow
+            is the status vocabulary (§3.2) and is not modified by this slice.
+            This is a personal count in --ink-muted, carrying no status colour,
+            because "how many days you have submitted" is not a compliance
+            outcome.
+
+            It names no window -- the ribbon directly above already renders
+            "Month 3 of 6 · 10 July – 9 August", so the context is one element
+            up. FR-30: own data only, a count with its own denominator, never
+            a rate, a rank or a peer.
+          */}
+          <div className="mb-8 flex flex-wrap items-baseline justify-between gap-4">
             <CountsRow
               items={[
                 { tone: "ok", text: `${String(dashboard.summary.onTime)} on time` },
@@ -145,6 +158,15 @@ export async function StudentToday({ displayName, role }: { displayName: string;
                   : []),
               ]}
             />
+            {streakLabel(streakFor(dashboard.days)) !== null && (
+              <span
+                data-testid="streak-chip"
+                className="tabular text-sm"
+                style={{ color: "var(--ink-muted)" }}
+              >
+                {streakLabel(streakFor(dashboard.days))}
+              </span>
+            )}
           </div>
         </>
       )}
