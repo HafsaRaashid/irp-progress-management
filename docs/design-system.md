@@ -540,5 +540,8 @@ Each names at least three rejected alternatives:
 | [0003](adr/0003-cycle-ribbon-as-fr-28-summary.md) | Cycle ribbon as the FR-28 summary surface |
 | [0020](adr/0020-collapsed-ribbon-key-on-the-mentor-dashboard.md) | A collapsed, mentor-only key for the cycle ribbon (§7) |
 | [0021](adr/0021-theme-persistence-by-cookie.md) | Theme persistence by server-readable cookie; dark becomes user-reachable (§3.3) |
+| [0030](adr/0030-bistec-cerulean-as-the-brand-colour.md) | The Bistec slot filled with the sampled cerulean, and the contrast gate that enforces it (§3.1, §3.3, §3.4) |
+| [0031](adr/0031-two-student-pages-feedback-with-the-history.md) | Two student routes; the feedback band lives with the history (§8.2) |
+| [0032](adr/0032-opt-in-expressive-props.md) | Expressive behaviour as opt-in props, defaulted off, named for behaviour (§9) |
 
 Changing anything in §3–§7 means amending the ADR that governs it, not just this file.

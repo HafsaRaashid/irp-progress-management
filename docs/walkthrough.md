@@ -182,24 +182,43 @@ a third panel stacked under `Transfer` (ADR-0023). **Register** is not here — 
 
 ### 7. Today
 
+- The page opens with a **greeting band** — a time-of-day salutation and the Colombo civil date,
+  on the brand gradient. Both resolve server-side in Asia/Colombo; nothing is read from the
+  browser's clock.
+- The **ribbon** leads, showing this student's own marks, with the **counts** and a **streak chip**
+  beneath it — *"12 of 14 days submitted"*. Its denominator is days **elapsed**, not days in the
+  month, so a student three days into a month who has submitted everything reads `3 of 3`, not
+  `3 of 22`. No rate, no rank, no peer (FR-30).
 - The composer offers **only legal target dates** — today and the previous weekday. There is no
   date field to type a wrong date into; the rule is enforced by construction in the interface as
   well as at the API (FR-15).
-- Submit an update. It appears immediately, flagged `On time`.
+- Submit an update. It appears immediately, flagged `On time`, the composer confirms
+  **"Submitted."**, and the day's mark on the ribbon **fills with a gentle overshoot** — the one
+  deliberate delight moment in the system (design-system §10). With `prefers-reduced-motion` on, it
+  lands instantly instead.
+- **Try a submission that will be rejected** (a closed date): the error appears *and the text you
+  typed survives*. Before this slice React's form reset cleared it on failure too, so a rejected
+  entry cost the student the update they had just written.
 - The absence toggle sits alongside, with a reason field. Absence is *recorded*, never *requested* —
   there is no approval workflow anywhere (a confirmed non-goal).
 - Try a day the mentor has marked `Evaluated`: it is locked and the composer will not offer it.
 
-### 8. My month (FR-29, FR-30)
+### 8. My progress (FR-29, FR-30)
 
-`My month` in the sidebar.
+`My progress` in the sidebar — renamed from `My month` ([ADR-0031](adr/0031-two-student-pages-feedback-with-the-history.md)),
+because the page now carries the programme position and the feedback as well as the history.
 
 - **"Month 3 of 6"** — the programme clock, which runs from the student's *first* enrolment. A
-  transfer does not reset it.
-- The same ribbon, but showing this student's own marks rather than the batch's.
-- The counts line, then **"Strengths and areas to develop"**, which reads *"No evaluation yet —
-  your first summary appears after your cycle closes."* Designed copy. Every student sees it in
-  this release.
+  transfer does not reset it. Now also drawn as **pips** beside the heading; they are decorative
+  (`aria-hidden`) because the heading already says the same thing in words.
+- The compliance rate for the month.
+- **"Strengths and areas to develop"**, which reads *"No evaluation yet — your first summary
+  appears after your month closes."* Designed copy. Every student sees it in this release, because
+  **O-5** blocks the AI provider decision and no evaluation exists yet. It moved here from the
+  student's home in the refresh: it belongs with the history it describes, and a page of its own
+  would be permanently empty.
+- **The ribbon is NOT here.** It leads the student's home instead (§8.2), so the two surfaces are
+  not near-duplicates.
 - The day history, newest first, with each day's review state visible: `On time`, `On time · In
   review`, `On time · Evaluated (locked)`.
 
@@ -212,7 +231,7 @@ with.
 
 | Do this | You should see |
 |---|---|
-| As the student, look at the sidebar | Three items: `Today`, `My month`, `Settings`. No mentor destination is offered. |
+| As the student, look at the sidebar | Three items: `Today`, `My progress`, `Settings`. No mentor destination is offered. |
 | As the student, type `/cycles` into the address bar | Redirected home. Not a 403 page — the API is the security boundary, this is just the wrong screen. |
 | Sign in as **Unregistered user** | The terminal 403 page. Not a redirect loop. |
 | As the mentor, look for Tharindu on Roster or Cycles | Absent from both. His history is intact in the database; he simply cannot be worked on (FR-5). |

@@ -767,10 +767,51 @@ begins. Plans live in `docs/superpowers/plans/`, specs in `docs/superpowers/spec
 | | 7 · Dashboards | T-14, T-15 | SC-4 | ✅ **Merged, PR #12.** Three dashboard endpoints, mentor Today + Cycles, student My month, the typography migration audit, `dashboard-flows.spec.ts`, and `docs/walkthrough.md`. Plan: `docs/superpowers/plans/2026-08-03-plan-7-dashboards.md` · Spec: `docs/superpowers/specs/2026-08-02-slice-2-product-design.md` |
 | | *(UI follow-ups to 7 — no new T-numbers)* | — | — | ✅ **Merged, PRs #13–#17.** Design-system pass (#13); roster legibility + `Batch 1`/`Batch 2` seed rename (#14); the collapsed ribbon key and `workers: 1` (#15, ADR-0020); **7A** Settings page, theme by cookie, verified dark (#16, ADR-0021/0022); **7B** frame and brand — sidebar icons, the logo, Sign out relocated, `Create batch` returned to Students (#17, ADR-0023). 7A and 7B carry their own plan/spec pairs under `docs/superpowers/` |
 | | *(developer-environment chore)* | — | — | ✅ **Merged, PR #18.** Web dev server moved 3000 → **3100**; container-internal ports deliberately unchanged. No FR — see CLAUDE.md's **Local ports** rule |
-| **3 — Evaluation** | 8 · Notifications | T-16 | — | 🚧 **PR #2 open, not yet merged.** `NotificationService` + Teams webhook + SMTP senders, wired fire-and-forget into entry submission, absence marking, and daily-report transitions; full test suite green. Plan: `docs/superpowers/plans/2026-09-15-plan-8-notifications.md` · Spec: `docs/superpowers/specs/2026-09-11-plan-8-notifications-design.md` · ADRs: 0024 (Teams webhook), 0025 (SMTP via M365) |
+| **3 — Evaluation** | 8 · Notifications | T-16 | — | ✅ **Merged** (current repo's PR #2, `feat/plan-8-notifications`, 2026-09-15 — see the PR-numbering note below). `NotificationService` + Teams webhook + SMTP senders, wired fire-and-forget into entry submission, absence marking, and daily-report transitions; full test suite green. Plan: `docs/superpowers/plans/2026-09-15-plan-8-notifications.md` · Spec: `docs/superpowers/specs/2026-09-11-plan-8-notifications-design.md` · ADRs: 0024 (Teams webhook), 0025 (SMTP via M365) |
+| | *(student surface refresh — no new T-numbers)* | — | FR-29, FR-30 | 🚧 **Branch `feat/ui-ux-improvements`, PR not yet opened.** The Bistec slot filled with a sampled cerulean and gated by a new 60-pair WCAG matrix; `/my-month` → `/my-progress` taking the feedback band; greeting band, streak chip, submission confirmation, programme pips, submit celebration, `EmptyState` opt-in slots. Mentor surfaces verified byte-unchanged. Plan: `docs/superpowers/plans/2026-10-05-student-surface-refresh.md` · Spec: `docs/superpowers/specs/2026-10-05-student-surface-refresh-design.md` · ADRs: 0030, 0031, 0032 |
 | | 9 · AI evaluation | T-17 | — | **Blocked on O-5.** A per-submission-review pivot was built and withdrawn before merge (ADR-0026, superseded by [ADR-0027](docs/adr/0027-stakeholder-interview-governs-over-consolidation-task-list.md)) — the stakeholder interview declines that design at Q15/Q16/Q25. See **O-18** |
 | | 10 · Winner + PDF | T-18 | — | Not started |
 | **4 — Proving it** | 11 · Load test + retro | T-24 – T-26 | D4 | Not started — and cannot start meaningfully until the deploy runbook's §1 bootstrap is run: NFR-1/NFR-2's k6 targets need a deployed URL, and NFR-3 needs the Entra directory this plan deferred a fourth time |
+
+**PR numbers — two schemes.** The bare `PR #n` in rows through the port chore cite the original
+`EnderGuardian25/irp-progress-management` repo, where Plans 1–7, the UI follow-ups, and the chore
+were first merged as its PRs #1–#18. Development from Plan 8 on continues in
+`HafsaRaashid/irp-progress-management` (the current remote), whose PR numbers restart at #1 — so its
+**PR #2 (Plan 8) is a different pull request from the foundation's PR #2** above. Slice-3 rows name
+the repo to keep the two apart. For reference, the current repo's PRs so far: #1 (Plan 8 spec,
+merged), #2 (Plan 8 notifications, merged), #3 (Plan 9 per-submission pivot, **closed unmerged** —
+the withdrawal the Plan 9 row describes), #4 (`refactor/review-flow-rework`, **open**).
+
+### 2026-10-06 — the student surface refresh
+
+Branch `feat/ui-ux-improvements`. Eleven tasks, each its own commit. Three things worth not
+rediscovering:
+
+**`--primary` is drawn as TEXT, not only as a fill** — `.nav-item[data-active]`,
+`.chip[aria-current]`, `.text-link:hover` and `--st-review`. It therefore carries 4.5:1, not 3:1,
+and that single fact is what made the obvious choice wrong: the Bistec mark is a *gradient*
+(253°→223°), and the bright mid-blue it reads as at a glance measures **3.94:1** on white. The
+value shipped is the gradient's deep end, `#045aa9` — the mark's largest single cluster at 15.2%.
+A by-eye sample of the same region, `#1C8FD1`, measures 3.56:1.
+
+**The two brand assets are sampled separately and their cluster shares are NOT interchangeable.**
+`hearts-academy-lockup.png` contains the green wordmark at 20.1%; `hearts-academy-mark.png` does
+not contain it at all. Quoting a percentage from one against a hex from the other produced two
+wrong provenance claims during this slice alone — one in the spec, one in an ADR draft, caught by
+review both times. Name the file whenever you cite a share.
+
+**design-system §3's "35 pairs pass WCAG AA" had no enforcement behind it.** Nothing in the repo
+computed luminance; `theme-tokens.test.ts` checked only that the two dark blocks matched *each
+other*, which cannot catch both being wrong together. There is now a 34-pair-per-theme matrix
+parsed out of `globals.css` itself, proven red four separate times against different deliberately
+broken tokens. It caught the rejected blue on cue.
+
+Also: `next-env.d.ts` is **regenerated by whichever Next command ran last** — `next build` points
+it at `.next/types/`, `next dev` at `.next/dev/types/`. CLAUDE.md's note that the dev copy is one
+"`tsconfig` does not include" is stale against Next 16.2.12; after any `next dev` it is exactly
+what `tsc` reads, and an interrupted dev server leaves it truncated, failing `pnpm typecheck` with
+`TS1128` inside a generated file. The remedy is unchanged — rebuild — but the explanation points
+at the wrong file.
 
 **Plan 4 was split on 2026-07-30.** Everything that needs no Azure account is 4A; everything that
 does is 4B. The split does **not** relax the ordering rule below: **slice 1 is not "deployed and
