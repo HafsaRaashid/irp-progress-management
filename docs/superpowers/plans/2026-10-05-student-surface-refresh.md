@@ -256,7 +256,10 @@ describe("WCAG contrast", () => {
   }
 
   /** [foreground, background, floor, the call site it comes from] */
-  const PAIRS: ReadonlyArray<readonly [string, string, number, string]> = [
+  // NOTE: not ReadonlyArray<T>. @typescript-eslint/array-type ships in
+  // stylisticTypeChecked, which eslint.config.mjs enables repo-wide, and it
+  // forbids that form. This is ESLint own autofix output.
+  const PAIRS: readonly (readonly [string, string, number, string])[] = [
     // Body text — §12's 4.5:1 floor.
     ["ink", "bg", 4.5, "body copy on the canvas"],
     ["ink", "surface", 4.5, "copy inside a Panel"],
@@ -335,7 +338,9 @@ Temporarily change the light `--ink-muted` in `globals.css` from `#5f636e` to `#
 pnpm --filter @irp/web exec vitest run test/theme-tokens.test.ts
 ```
 
-Expected: **FAIL** on `light > --ink-muted on --bg meets 4.5:1` and its two siblings on `--surface` and `--surface-sunk` — roughly 3.3:1 against the 4.5 floor.
+Expected: **FAIL** on `light > --ink-muted on --bg meets 4.5:1` and its two siblings on `--surface` and `--surface-sunk` — measured at **3.07 / 2.87 / 2.97** against the 4.5 floor.
+
+Only the **light** theme goes red, and that is correct: the dark block overrides `--ink-muted` with `#a7aab4`, so the dark set never sees the broken value. That is the light-with-overrides cascade model working, and it doubles as evidence the override merge is real rather than decorative.
 
 **Revert the change and re-run to confirm PASS. Do not commit the deliberate break.** Record the failure output in the task report.
 
