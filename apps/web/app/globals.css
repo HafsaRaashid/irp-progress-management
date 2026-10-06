@@ -48,8 +48,9 @@
      down to 168.6 degrees, which is INSIDE the 140-170 band reserved for
      --st-ok. Both stops are gated against --ink and --ink-muted in
      test/theme-tokens.test.ts. */
-  --greeting-from: #e4f0ff;
-  --greeting-to: #def2fb;
+  --greeting-from: #045aa9;
+  --greeting-to: #0079ad;
+  --greeting-ink: #ffffff;
 
   --st-ok: #267b4c;
   --st-late: #9f5c0c;
@@ -113,8 +114,9 @@
     --st-late: #eeac53;
     --st-absent: #9a9eaa;
     --st-missed: #ed7473;
-    --greeting-from: #1c2f45;
-    --greeting-to: #0c3340;
+    --greeting-from: #06406f;
+    --greeting-to: #055a7e;
+    --greeting-ink: #ffffff;
     /* dark-tokens:end */
   }
 }
@@ -138,8 +140,9 @@
   --st-late: #eeac53;
   --st-absent: #9a9eaa;
   --st-missed: #ed7473;
-  --greeting-from: #1c2f45;
-  --greeting-to: #0c3340;
+  --greeting-from: #06406f;
+  --greeting-to: #055a7e;
+  --greeting-ink: #ffffff;
   /* dark-tokens:end */
 }
 
@@ -388,13 +391,45 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
    literal would not re-theme. */
 .greeting-band {
   border-radius: var(--radius-panel);
-  padding: 24px 28px;
-  background: linear-gradient(100deg, var(--greeting-from), var(--greeting-to));
+  padding: 28px 32px;
+  background: linear-gradient(105deg, var(--greeting-from), var(--greeting-to));
+  color: var(--greeting-ink);
+}
+
+/* The programme journey — "Month 3 of 6" as distance travelled rather than a
+   label. Sits on the band, so its track is white-at-low-alpha rather than a
+   token: it has to read against the gradient, not against the canvas. */
+.journey-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.25);
+  overflow: hidden;
+}
+.journey-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--greeting-ink);
+  transform-origin: left;
+  animation: journey-grow 900ms var(--ease-out-quart) both;
+}
+@keyframes journey-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Entrance for the dashboard cards. A short, small rise -- §10 budgets
+   150-250ms for state and bans bounce, so this is a fade with 8px of travel,
+   staggered by a custom property the caller sets. */
+@keyframes card-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.card-rise {
+  animation: card-rise 260ms var(--ease-out-quart) both;
+  animation-delay: var(--rise-delay, 0ms);
 }
 
 /* §10: reduce → "all of the above become instant or a plain crossfade."
    The animations resolve to their end state rather than being cancelled. */
 @media (prefers-reduced-motion: reduce) {
   .btn, .control, .text-link { transition: none; }
-  .ribbon-mark, .ribbon-mark-celebrate, .pill-crossfade { animation-duration: 1ms; animation-delay: 0ms; }
+  .ribbon-mark, .ribbon-mark-celebrate, .pill-crossfade,
+  .journey-fill, .card-rise { animation-duration: 1ms; animation-delay: 0ms; }
 }

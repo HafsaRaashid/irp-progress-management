@@ -8,11 +8,13 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { CountsRow } from "@/components/ui/counts-row";
 import { StatusPill } from "@/components/ui/status-pill";
 import { EmptyState } from "@/components/ui/empty-state";
+import { MentorNote } from "@/components/ui/mentor-note";
 import { GreetingBand } from "./greeting-band";
 import { EntryComposer } from "./entry-composer";
 import { AbsenceToggle } from "./absence-toggle";
-import { cycleHeading } from "./cycle-heading";
+import { cycleRangeLabel } from "./cycle-heading";
 import { streakFor, streakLabel } from "./streak";
+import { motivationFor } from "./motivation";
 import { formatCivilDateLabel, formatWeekdayName } from "./format-civil-date";
 
 // §11's deadline copy ("You can still submit for {date} until …") is always
@@ -99,7 +101,18 @@ export async function StudentToday({ displayName, role }: { displayName: string;
         a greeting dated from the browser's clock would be wrong in exactly
         the timezone this system cares about.
       */}
-      {dashboard !== undefined && <GreetingBand today={dashboard.today} />}
+      {dashboard !== undefined && (
+        <GreetingBand
+          today={dashboard.today}
+          seq={dashboard.cycle.seq}
+          programmeMonths={dashboard.programmeMonths}
+          motivation={motivationFor({
+            days: dashboard.days,
+            today: dashboard.today,
+            seq: dashboard.cycle.seq,
+          })}
+        />
+      )}
       {/*
         Playwright's sign-in chain (e2e/signin.spec.ts) asserts
         data-testid="user-name" AND data-testid="user-role" on every role
@@ -124,13 +137,26 @@ export async function StudentToday({ displayName, role }: { displayName: string;
         </div>
       )}
 
+      {/*
+        A two-column dashboard, not a stack. At 1280px (NFR-13's floor) a
+        single 1000px column wasted half the screen and pushed the composer --
+        the thing this page exists for -- below the fold on a Monday, when the
+        submission window carries four days instead of two.
+
+        The scan sits left, the action sits right, and both are above the fold
+        at the minimum supported width.
+      */}
+      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
       {dashboard !== undefined && (
-        <>
+        /* ONE grid child, not a fragment. A fragment's children become
+           separate grid items, which put the counts row in the right-hand
+           column and bumped the composer onto a new row. */
+        <div className="card-rise">
           <div className="mb-6">
             <CycleRibbon
               days={toStudentRibbonDays([...dashboard.days], dashboard.today)}
               extraAfter={[...dashboard.extraAfter]}
-              label={cycleHeading(dashboard)}
+              label={cycleRangeLabel(dashboard)}
               // §10's one delight moment. Set HERE and nowhere else:
               // mentor-today.tsx renders the same component and must keep the
               // default (ADR-0032).
@@ -172,11 +198,20 @@ export async function StudentToday({ displayName, role }: { displayName: string;
               </span>
             )}
           </div>
-        </>
+        </div>
       )}
 
-      <div className="mb-8">
-        <EntryComposer targetDates={openWindow.targetDates} />
+      {/* RIGHT COLUMN — the action. Elevated onto --surface so the composer
+          reads as the page's primary job rather than as three loose controls
+          on the canvas, which is how it sat before. */}
+      <div className="card-rise" style={{ ["--rise-delay" as string]: "80ms" }}>
+        <div
+          className="rounded-[var(--radius-panel)] border p-6"
+          style={{ background: "var(--surface)", borderColor: "var(--line)" }}
+        >
+          <EntryComposer targetDates={openWindow.targetDates} />
+        </div>
+      </div>
       </div>
 
       {error !== undefined && (
@@ -239,6 +274,10 @@ export async function StudentToday({ displayName, role }: { displayName: string;
                   </div>
                 </div>
               ))}
+
+              {/* The mentor's words, attached to the day they are about.
+                  Renders nothing when there is no note -- see MentorNote. */}
+              <MentorNote note={day?.mentorNote ?? null} />
 
               {weekday && (noRecord || absenceReason !== null) && (
                 <AbsenceToggle date={date} absenceReason={absenceReason} />

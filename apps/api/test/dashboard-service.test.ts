@@ -4,6 +4,7 @@ import { createPrismaClient } from "../src/db/client.js";
 import { createEntryRepo } from "../src/db/entry-repo.js";
 import { createAbsenceRepo } from "../src/db/absence-repo.js";
 import { createBatchRepo } from "../src/db/batch-repo.js";
+import { createMentorRecordRepo } from "../src/db/mentor-record-repo.js";
 import { colomboInstant } from "../src/db/civil-date-map.js";
 import { createDayService } from "../src/services/day-service.js";
 import { createDashboardService } from "../src/services/dashboard-service.js";
@@ -37,7 +38,8 @@ describe.skipIf(!dbUrl)("createDashboardService — batchToday", () => {
   const entryRepo = createEntryRepo(prisma);
   const absenceRepo = createAbsenceRepo(prisma);
   const batchRepo = createBatchRepo(prisma);
-  const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
+  const mentorRecordRepo = createMentorRecordRepo(prisma);
+  const dayService = createDayService({ entryRepo, absenceRepo, batchRepo, mentorRecordRepo });
   const dashboards = createDashboardService({ batchRepo, dayService });
 
   beforeEach(async () => {
@@ -257,7 +259,8 @@ describe.skipIf(!dbUrl)("createDashboardService — batchSummary", () => {
   const entryRepo = createEntryRepo(prisma);
   const absenceRepo = createAbsenceRepo(prisma);
   const batchRepo = createBatchRepo(prisma);
-  const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
+  const mentorRecordRepo = createMentorRecordRepo(prisma);
+  const dayService = createDayService({ entryRepo, absenceRepo, batchRepo, mentorRecordRepo });
   const dashboards = createDashboardService({ batchRepo, dayService });
 
   beforeEach(async () => {
@@ -518,7 +521,8 @@ describe.skipIf(!dbUrl)("createDashboardService — studentDashboard", () => {
   const entryRepo = createEntryRepo(prisma);
   const absenceRepo = createAbsenceRepo(prisma);
   const batchRepo = createBatchRepo(prisma);
-  const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
+  const mentorRecordRepo = createMentorRecordRepo(prisma);
+  const dayService = createDayService({ entryRepo, absenceRepo, batchRepo, mentorRecordRepo });
   const dashboards = createDashboardService({ batchRepo, dayService });
 
   beforeEach(async () => {

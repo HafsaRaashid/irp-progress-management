@@ -43,7 +43,7 @@ describe("salutationFor", () => {
 
 describe("GreetingBand", () => {
   it("renders the salutation as the page heading", () => {
-    render(<GreetingBand today="2026-10-06" now={new Date("2026-10-06T03:00:00Z")} />);
+    render(<GreetingBand today="2026-10-06" seq={3} programmeMonths={6} motivation="18 days running." now={new Date("2026-10-06T03:00:00Z")} />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Good morning");
   });
 
@@ -55,14 +55,14 @@ describe("GreetingBand", () => {
    * ribbon rendered directly beneath it.
    */
   it("prints the supplied civil date rather than re-deriving one", () => {
-    render(<GreetingBand today="2026-10-06" now={new Date("2026-10-06T19:00:00Z")} />);
+    render(<GreetingBand today="2026-10-06" seq={3} programmeMonths={6} motivation="18 days running." now={new Date("2026-10-06T19:00:00Z")} />);
     expect(screen.getByText(/6 October/)).toBeInTheDocument();
     expect(screen.queryByText(/7 October/)).not.toBeInTheDocument();
   });
 
   /** §12: the zone is named in the UI, never a bare local time. */
   it("names the timezone", () => {
-    render(<GreetingBand today="2026-10-06" now={new Date("2026-10-06T03:00:00Z")} />);
+    render(<GreetingBand today="2026-10-06" seq={3} programmeMonths={6} motivation="18 days running." now={new Date("2026-10-06T03:00:00Z")} />);
     expect(screen.getByText(/Colombo/)).toBeInTheDocument();
   });
 
@@ -73,10 +73,49 @@ describe("GreetingBand", () => {
    */
   it("carries the token-driven gradient class rather than an inline colour", () => {
     const { container } = render(
-      <GreetingBand today="2026-10-06" now={new Date("2026-10-06T03:00:00Z")} />,
+      <GreetingBand today="2026-10-06" seq={3} programmeMonths={6} motivation="18 days running." now={new Date("2026-10-06T03:00:00Z")} />,
     );
     const band = container.querySelector(".greeting-band");
     expect(band).not.toBeNull();
     expect(band!.getAttribute("style")).toBeNull();
+  });
+
+  it("renders the motivational line it is given, verbatim", () => {
+    render(
+      <GreetingBand today="2026-10-06" seq={3} programmeMonths={6}
+        motivation="Back on it. Logged for today." now={new Date("2026-10-06T03:00:00Z")} />,
+    );
+    expect(screen.getByTestId("motivation")).toHaveTextContent("Back on it. Logged for today.");
+  });
+
+  it("draws the journey bar and says how far is left", () => {
+    render(
+      <GreetingBand today="2026-10-06" seq={3} programmeMonths={6}
+        motivation="x" now={new Date("2026-10-06T03:00:00Z")} />,
+    );
+    expect(screen.getByText("Month 3 of 6")).toBeInTheDocument();
+    expect(screen.getByText("3 to go")).toBeInTheDocument();
+  });
+
+  it("calls the last month final rather than '0 to go'", () => {
+    render(
+      <GreetingBand today="2026-10-06" seq={6} programmeMonths={6}
+        motivation="x" now={new Date("2026-10-06T03:00:00Z")} />,
+    );
+    expect(screen.getByText("final month")).toBeInTheDocument();
+  });
+
+  /**
+   * A mid-cycle joiner has no sequence until their first evaluated cycle opens
+   * (FR-27). A bar at 0% beside "Your first evaluated month starts…" would
+   * contradict the sentence next to it, so it draws nothing at all.
+   */
+  it("draws no journey bar for a joiner with no month number", () => {
+    const { container } = render(
+      <GreetingBand today="2026-10-06" seq={null} programmeMonths={6}
+        motivation="Your first month starts here." now={new Date("2026-10-06T03:00:00Z")} />,
+    );
+    expect(container.querySelector(".journey-track")).toBeNull();
+    expect(container.textContent).not.toContain("null");
   });
 });

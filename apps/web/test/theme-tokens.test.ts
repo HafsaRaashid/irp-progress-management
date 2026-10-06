@@ -61,12 +61,12 @@ describe("globals.css dark token blocks", () => {
     const [block] = darkBlocks(css);
     expect(block).toContain("--bg: #121212");
     expect(block).toContain("--st-missed: #ed7473");
-    // 15 declarations in §3.3's dark table: the 13 original tokens plus the
-    // two greeting-band gradient stops added with the student refresh. They
+    // 16 declarations in §3.3's dark table: the 13 original tokens plus the
+    // greeting band's two gradient stops and its own ink. They
     // live INSIDE the markers deliberately -- outside, the two copies would
     // escape the byte-identity check above, and two unchecked copies of a
     // themed value is exactly the drift that check exists to prevent.
-    expect(block!.match(/--[a-z-]+:/g)).toHaveLength(15);
+    expect(block!.match(/--[a-z-]+:/g)).toHaveLength(16);
   });
 });
 
@@ -202,10 +202,13 @@ describe("WCAG contrast", () => {
     // The student greeting band. Text sits directly on the gradient, so BOTH
     // stops are measured -- a ratio against a gradient has no single value,
     // which is also why design-system §2 bans gradient TEXT outright.
-    ["ink", "greeting-from", 4.5, "the greeting salutation"],
-    ["ink", "greeting-to", 4.5, "the greeting salutation, far stop"],
-    ["ink-muted", "greeting-from", 4.5, "the greeting date line"],
-    ["ink-muted", "greeting-to", 4.5, "the greeting date line, far stop"],
+    //
+    // The band is a DEEP brand fill with its own light ink (--greeting-ink),
+    // not a pale tint carrying --ink. That inversion is what let the brand
+    // colour actually appear on the page: keeping dark text on it capped the
+    // fill's chroma at ~0.05, because --ink-muted stopped passing first.
+    ["greeting-ink", "greeting-from", 4.5, "the greeting salutation"],
+    ["greeting-ink", "greeting-to", 4.5, "the greeting salutation, far stop"],
   ];
 
   /**
@@ -221,8 +224,8 @@ describe("WCAG contrast", () => {
     expect(light["st-review"]).toBeUndefined();
   });
 
-  it("covers 34 pairs per theme", () => {
-    expect(PAIRS).toHaveLength(34);
+  it("covers 32 pairs per theme", () => {
+    expect(PAIRS).toHaveLength(32);
   });
 
   for (const [themeName, tokens] of [["light", light], ["dark", dark]] as const) {

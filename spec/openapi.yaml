@@ -231,6 +231,7 @@ paths:
                       reportStatus: InReview
                       reportId: 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
                       absenceReason: null
+                      mentorNote: caught up by evening
                       entries:
                         - id: 7be9f1d2-3c44-4f8a-9a01-2b3c4d5e6f70
                           entryDate: '2026-07-31'
@@ -243,6 +244,7 @@ paths:
                       reportStatus: null
                       reportId: null
                       absenceReason: null
+                      mentorNote: null
                       entries: []
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -527,6 +529,7 @@ paths:
                         reportStatus: InReview
                         reportId: 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
                         absenceReason: null
+                        mentorNote: paired on the deployment workflow
                         entries:
                           - id: 7be9f1d2-3c44-4f8a-9a01-2b3c4d5e6f70
                             entryDate: '2026-08-03'
@@ -1218,6 +1221,7 @@ paths:
                       reportStatus: InReview
                       reportId: 5a3c2b1d-0e9f-4a8b-b7c6-d5e4f3a2b1c0
                       absenceReason: null
+                      mentorNote: null
                       entries:
                         - id: 7be9f1d2-3c44-4f8a-9a01-2b3c4d5e6f70
                           entryDate: '2026-08-03'
@@ -1541,7 +1545,7 @@ components:
       type: object
       title: DaySummary
       description: Everything on record for one student and one calendar day.
-      required: [date, status, reportStatus, reportId, absenceReason, entries]
+      required: [date, status, reportStatus, reportId, absenceReason, mentorNote, entries]
       additionalProperties: false
       properties:
         date:
@@ -1572,6 +1576,24 @@ components:
           description: The recorded absence reason, when the day is marked absent.
           examples:
             - medical appointment
+        mentorNote:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: |
+            The mentor's own note for this student-day, when one was written
+            (FR-19). Shown to the student attached to that day's submission —
+            it is the only per-day feedback channel the system has, since the
+            cycle summary (`strengthsAndWeaknesses`) stays null until an
+            evaluation exists.
+
+            Null when the mentor recorded attendance without a note, or
+            recorded nothing at all. It is deliberately NOT an empty string in
+            that case: "no feedback" and "feedback that happens to be blank"
+            must be distinguishable, because the interface renders nothing at
+            all for the former rather than an empty panel.
+          examples:
+            - caught up by evening
         entries:
           type: array
           description: The day's entries, earliest first. Empty when nothing was submitted.

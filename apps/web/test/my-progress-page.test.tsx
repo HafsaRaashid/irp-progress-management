@@ -129,6 +129,7 @@ describe("MyProgressPage", () => {
         {
           date: "2026-07-31", status: "onTime", reportStatus: "Evaluated", reportId: "r1",
           absenceReason: null,
+    mentorNote: null,
           entries: [{
             id: "e1", entryDate: "2026-07-31", body: "Older entry.",
             submittedAt: "2026-07-31T11:30:00.000Z", isLate: false, isExtra: false,
@@ -137,6 +138,7 @@ describe("MyProgressPage", () => {
         {
           date: "2026-08-03", status: "late", reportStatus: "InReview", reportId: "r2",
           absenceReason: null,
+    mentorNote: null,
           entries: [{
             id: "e2", entryDate: "2026-08-03", body: "Newer entry.",
             submittedAt: "2026-08-04T04:10:00.000Z", isLate: true, isExtra: false,
@@ -164,6 +166,7 @@ describe("MyProgressPage", () => {
         {
           date: "2026-07-31", status: "onTime", reportStatus: "Evaluated", reportId: "r1",
           absenceReason: null,
+    mentorNote: null,
           entries: [{
             id: "e1", entryDate: "2026-07-31", body: "Real work.",
             submittedAt: "2026-07-31T11:30:00.000Z", isLate: false, isExtra: false,
@@ -173,17 +176,20 @@ describe("MyProgressPage", () => {
         // because "settled" alone is enough; nothing real should disappear.
         {
           date: "2026-08-03", status: "missed", reportStatus: null, reportId: null,
-          absenceReason: null, entries: [],
+          absenceReason: null,
+    mentorNote: null, entries: [],
         },
         // A quiet weekend -- nothing recorded -- dropped.
         {
           date: "2026-08-01", status: "none", reportStatus: null, reportId: null,
-          absenceReason: null, entries: [],
+          absenceReason: null,
+    mentorNote: null, entries: [],
         },
         // A future weekday that hasn't arrived yet -- dropped.
         {
           date: "2026-08-04", status: "future", reportStatus: null, reportId: null,
-          absenceReason: null, entries: [],
+          absenceReason: null,
+    mentorNote: null, entries: [],
         },
       ],
       error: undefined,
@@ -206,11 +212,13 @@ describe("MyProgressPage", () => {
       data: [
         {
           date: "2026-08-01", status: "none", reportStatus: null, reportId: null,
-          absenceReason: null, entries: [],
+          absenceReason: null,
+    mentorNote: null, entries: [],
         },
         {
           date: "2026-08-04", status: "future", reportStatus: null, reportId: null,
-          absenceReason: null, entries: [],
+          absenceReason: null,
+    mentorNote: null, entries: [],
         },
       ],
       error: undefined,
@@ -247,7 +255,8 @@ describe("MyProgressPage", () => {
     listMyDays.mockResolvedValue({
       data: [{
         date: "2026-08-03", status: "absent", reportStatus: null, reportId: null,
-        absenceReason: "Medical appointment", entries: [],
+        absenceReason: "Medical appointment",
+    mentorNote: null, entries: [],
       }],
       error: undefined,
     });

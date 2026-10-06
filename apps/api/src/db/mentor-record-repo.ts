@@ -31,6 +31,8 @@ export interface MentorRecordRepo {
    * window over the mapped DB date, ordered by that same column.
    */
   listForStudent(studentId: string, from: CivilDate, to: CivilDate): Promise<MentorDayRecordShape[]>;
+  /** Batched sibling of listForStudent (ADR-0018), for the per-day view. */
+  listForStudents(studentIds: string[], from: CivilDate, to: CivilDate): Promise<MentorDayRecordShape[]>;
 }
 
 interface DbRecord {
@@ -97,6 +99,15 @@ export function createMentorRecordRepo(prisma: PrismaClient): MentorRecordRepo {
     async listForStudent(studentId, from, to) {
       const rows = await prisma.mentorDayRecord.findMany({
         where: { studentId, date: { gte: toDbDate(from), lte: toDbDate(to) } },
+        orderBy: { date: "asc" },
+      });
+      return rows.map(map);
+    },
+
+    async listForStudents(studentIds, from, to) {
+      if (studentIds.length === 0) return [];
+      const rows = await prisma.mentorDayRecord.findMany({
+        where: { studentId: { in: studentIds }, date: { gte: toDbDate(from), lte: toDbDate(to) } },
         orderBy: { date: "asc" },
       });
       return rows.map(map);

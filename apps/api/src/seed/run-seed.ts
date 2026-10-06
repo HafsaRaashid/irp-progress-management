@@ -16,6 +16,7 @@ import {
   shiftCycle,
   toProgrammeDate,
   workingDaysBetween,
+  type CivilDate,
 } from "@irp/core";
 import {
   SEED_BATCH_NAMES,
@@ -48,6 +49,39 @@ const ABSENCE_REASONS = [
   "Family emergency — informed the mentor in the morning",
   "University exam",
 ];
+
+/**
+ * The mentor's own words on a student-day (FR-19). Deliberately specific and
+ * mixed in register -- praise, a correction, a nudge, a logistics note -- so
+ * the interface is designed against what real feedback looks like rather than
+ * against a row of compliments.
+ *
+ * Not every day gets one. "Sometimes there is feedback and sometimes there
+ * isn't" IS the student's real experience, and the day card has to look right
+ * both ways, so the seed must produce both.
+ */
+const MENTOR_NOTES = [
+  "Good instinct on the caching question - worth writing that reasoning down somewhere.",
+  "Caught up by evening. No concerns.",
+  "Strong pairing session. Ask Nuwan about the retry policy before you go further.",
+  "The migration approach works, but check what happens on a partial failure.",
+  "Clear write-up today. This is the level of detail that makes review quick.",
+  "Pushed through a hard bug without asking - next time ask sooner, it is not a weakness.",
+  "Covered for the standup while I was out. Noted and appreciated.",
+  "Scope crept a little here. Worth re-reading the ticket before starting tomorrow.",
+];
+
+/** A stable small integer from a civil date, so note placement is deterministic across seed runs. */
+function dateIndex(d: CivilDate): number {
+  return [...d].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+}
+
+function mentorNote(dayIndex: number, salt: number): string | undefined {
+  // Roughly one day in three carries a note. A mentor writing on every single
+  // day would be unrealistic AND would hide the no-feedback rendering path.
+  if ((dayIndex + salt) % 3 !== 0) return undefined;
+  return MENTOR_NOTES[(dayIndex + salt) % MENTOR_NOTES.length]!;
+}
 
 function prose(dayIndex: number, salt: number): string {
   return PROSE[(dayIndex + salt) % PROSE.length]!;
@@ -251,11 +285,43 @@ export async function runSeed(prisma: PrismaClient, now: Date): Promise<void> {
   for (const report of toEvaluate) {
     const reportDate = fromDbDate(report.reportDate);
     if (!isWeekday(reportDate)) continue;
+    const noteSalt = [...report.studentId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    const note = mentorNote(dateIndex(reportDate), noteSalt);
     await mentorRecords.upsert({
       studentId: report.studentId,
       date: reportDate,
       attended: true,
       tasksCompleted: true,
+      ...(note !== undefined && { note }),
+      recordedById: mentor1.id,
+    });
+  }
+
+  // RECENT days get records too -- and they are the only ones a student
+  // actually sees, since home shows the open submission window and My
+  // progress shows the current month. Writing notes only on the >14-day
+  // band (as this did until the feedback channel opened) left every
+  // student-visible day without feedback, which made the feature look
+  // unbuilt when it was merely unseeded.
+  //
+  // Safe to upsert: these reports are still IN_REVIEW, so FR-20's lock has
+  // not closed them. Anything older is handled by the loop above, BEFORE
+  // the EVALUATED sweep below.
+  const recentReports = await prisma.dailyReport.findMany({
+    where: { reportDate: { gte: evaluatedBefore }, studentId: { in: studentIds } },
+  });
+  for (const report of recentReports) {
+    const reportDate = fromDbDate(report.reportDate);
+    if (!isWeekday(reportDate)) continue;
+    const noteSalt = [...report.studentId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    const note = mentorNote(dateIndex(reportDate), noteSalt);
+    if (note === undefined) continue; // no record at all, not a blank one
+    await mentorRecords.upsert({
+      studentId: report.studentId,
+      date: reportDate,
+      attended: true,
+      tasksCompleted: true,
+      note,
       recordedById: mentor1.id,
     });
   }

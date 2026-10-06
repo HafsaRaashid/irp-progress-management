@@ -7,6 +7,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { CountsRow } from "@/components/ui/counts-row";
 import { StatusPill } from "@/components/ui/status-pill";
 import { EmptyState } from "@/components/ui/empty-state";
+import { MentorNote } from "@/components/ui/mentor-note";
 import { cycleHeading } from "../cycle-heading";
 import { formatCivilDateLabel } from "../format-civil-date";
 
@@ -195,6 +196,8 @@ export default async function MyMonthPage() {
                   {entry.body}
                 </p>
               ))}
+
+              <MentorNote note={day.mentorNote} />
             </Panel>
           ))
         )}
