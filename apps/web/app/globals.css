@@ -383,6 +383,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 }
 .pill-crossfade { animation: pill-fade 180ms var(--ease-out-quart) both; }
 
+/* The mentor-note disclosure's chevron. A plain transition, not an animation
+   -- it fires once per click rather than on mount, so it needs its own entry
+   in the reduced-motion block below (the animation-duration trick that
+   handles the keyframe-based entries doesn't touch a transition). */
+.chevron-rotate { transition: transform 150ms var(--ease-out-quart); }
+
 /* The student greeting band (design-system §8.2). A FILL, not a card, so it
    carries no border -- §5 forbids a 1px border and a >=16px blur shadow on the
    same element, and this has neither. Warm-zone padding per §5 (24-32px) and
@@ -429,7 +435,7 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 /* §10: reduce → "all of the above become instant or a plain crossfade."
    The animations resolve to their end state rather than being cancelled. */
 @media (prefers-reduced-motion: reduce) {
-  .btn, .control, .text-link { transition: none; }
+  .btn, .control, .text-link, .chevron-rotate { transition: none; }
   .ribbon-mark, .ribbon-mark-celebrate, .pill-crossfade,
   .journey-fill, .card-rise { animation-duration: 1ms; animation-delay: 0ms; }
 }

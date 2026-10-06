@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Panel } from "@/components/ui/panel";
 import { FieldLabel } from "@/components/ui/field-label";
 import { Table, Th, Td } from "@/components/ui/table";
 
@@ -158,6 +159,47 @@ describe("EmptyState", () => {
     const wrapper = container.querySelector("[aria-hidden=\"true\"]");
     expect(wrapper).not.toBeNull();
     expect(wrapper!.querySelector("[data-testid=\"the-icon\"]")).not.toBeNull();
+  });
+});
+
+/**
+ * Panel had NO direct test coverage anywhere in the suite before this --
+ * every assertion about it lived inside page-level tests that happened to
+ * render one.
+ */
+describe("Panel", () => {
+  it("renders a solid surface by default -- the path every existing caller relies on", () => {
+    const { container } = render(<Panel>content</Panel>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.style.background).toBe("var(--surface)");
+    expect(el.className).not.toContain("border-dashed");
+  });
+
+  it("switches to the dense roster surface with sunk", () => {
+    const { container } = render(<Panel sunk>content</Panel>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.style.background).toBe("var(--surface-sunk)");
+  });
+
+  /**
+   * ADR-0032's opt-in contract: a caller that never passes `quiet` must get
+   * exactly the solid-surface rendering above, unchanged. This is the
+   * characterisation test that protects that default.
+   */
+  it("drops the fill and dashes the border when quiet, without changing a caller that omits it", () => {
+    const { container } = render(<Panel quiet>content</Panel>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.style.background).toBe("transparent");
+    expect(el.className).toContain("border-dashed");
+  });
+
+  it("still renders its header row while quiet", () => {
+    render(
+      <Panel quiet title="Tuesday 6 October">
+        content
+      </Panel>,
+    );
+    expect(screen.getByText("Tuesday 6 October")).toBeInTheDocument();
   });
 });
 

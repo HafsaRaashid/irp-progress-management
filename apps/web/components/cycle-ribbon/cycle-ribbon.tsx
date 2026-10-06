@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 /**
  * The VISUAL mark for one required day. Deliberately distinct from
  * @irp/core's domain-level DayStatus union — this is presentation, that is
@@ -26,7 +28,14 @@ export interface RibbonProps {
   /** Dates after which a weekend Extra slot is rendered (FR-33). */
   extraAfter?: string[];
   label?: string;
-  caption?: string;
+  /**
+   * Arbitrary content rendered inside the panel, below the marks -- a
+   * ReactNode rather than plain text so a caller can put a CountsRow (and
+   * anything beside it) inside the SAME surfaced block the ribbon draws,
+   * instead of floating it on the bare canvas underneath. No caller used this
+   * as a string before it widened, so nothing existing changes.
+   */
+  caption?: ReactNode;
   /**
    * §10's second moment — "Submission lands: the student's day mark fills."
    * OFF by default (ADR-0032), so the mentor's ribbon renders byte-for-byte
@@ -236,11 +245,14 @@ export function CycleRibbon({ days, extraAfter = [], label, caption, celebrate =
         {days.length} required days in this cycle
       </span>
 
-      {caption !== undefined && (
-        <p className="tabular mt-3 text-xs" style={{ color: "var(--ink-muted)" }}>
-          {caption}
-        </p>
-      )}
+      {/*
+        A plain `<div>`, not the `<p>` this used to be: a plain string caption
+        still reads fine inside one, but CountsRow renders a <div>, and a
+        block element inside a <p> is invalid HTML and trips a hydration
+        warning. Typography is left to the caller -- a bare string caption
+        would need its own styling now, but nothing has ever passed one.
+      */}
+      {caption !== undefined && <div className="mt-3">{caption}</div>}
     </figure>
   );
 }
