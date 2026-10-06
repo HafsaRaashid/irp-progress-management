@@ -66,3 +66,19 @@ export function formatWeekdayName(isoDate: string): string {
     weekday: "long",
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
+
+/**
+ * "5:37 pm" for an entry's `submittedAt` -- a full UTC instant, not a civil
+ * date, so this is the one formatter here that does NOT reconstruct a
+ * UTC-midnight Date -- the instant is already precise and is passed straight
+ * to Intl. Was declared separately in student-today.tsx and my-progress's
+ * page needed the identical formatter for the same reason (differentiating
+ * multiple entries on one day) -- duplicating it a second time is exactly
+ * what counts-row.tsx's own history warns against.
+ */
+export const ENTRY_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Colombo",
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});

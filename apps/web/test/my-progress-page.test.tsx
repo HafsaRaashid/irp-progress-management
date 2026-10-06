@@ -48,7 +48,7 @@ describe("MyProgressPage", () => {
     getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText(/Month 3 of 6/)).toBeInTheDocument();
     expect(screen.getByText(/94% compliance/)).toBeInTheDocument();
@@ -69,7 +69,7 @@ describe("MyProgressPage", () => {
     getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.queryByRole("figure")).not.toBeInTheDocument();
     expect(screen.getByText("Strengths and areas to develop")).toBeInTheDocument();
@@ -81,7 +81,7 @@ describe("MyProgressPage", () => {
     getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     // §11: empty states are invitations, and the copy says "month", never the
     // internal word "cycle".
@@ -97,7 +97,7 @@ describe("MyProgressPage", () => {
     getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    const { container } = render(await MyProgressPage());
+    const { container } = render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(container.textContent).not.toMatch(/rank|score|index|leaderboard/i);
   });
@@ -114,7 +114,7 @@ describe("MyProgressPage", () => {
     });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText(/first evaluated month starts/i)).toBeInTheDocument();
     expect(screen.queryByText(/Month null/)).not.toBeInTheDocument();
@@ -148,11 +148,15 @@ describe("MyProgressPage", () => {
       error: undefined,
     });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     const bodies = screen.getAllByTestId("day-entry-body").map((n) => n.textContent);
     expect(bodies).toEqual(["Newer entry.", "Older entry."]);
-    expect(screen.getByText("Late")).toBeInTheDocument();
+    // TWO "Late" pills now, not one: the day's own status pill, plus a
+    // second on its one entry -- the per-entry meta row added to
+    // differentiate entries on the same day marks each one's own
+    // late/extra/on-time outcome, independent of the day-level pill.
+    expect(screen.getAllByText("Late")).toHaveLength(2);
     expect(screen.getByText(/· Saved/)).toBeInTheDocument();
   });
 
@@ -195,7 +199,7 @@ describe("MyProgressPage", () => {
       error: undefined,
     });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Real work.")).toBeInTheDocument();
     expect(screen.getByText("Friday 31 July")).toBeInTheDocument();
@@ -224,7 +228,7 @@ describe("MyProgressPage", () => {
       error: undefined,
     });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Nothing recorded this month yet.")).toBeInTheDocument();
   });
@@ -243,7 +247,7 @@ describe("MyProgressPage", () => {
     });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("— compliance")).toBeInTheDocument();
   });
@@ -261,7 +265,7 @@ describe("MyProgressPage", () => {
       error: undefined,
     });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Medical appointment")).toBeInTheDocument();
   });
@@ -278,7 +282,7 @@ describe("MyProgressPage", () => {
     });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText(/not enrolled in a batch yet/i)).toBeInTheDocument();
     expect(screen.queryByText(/Month null/)).not.toBeInTheDocument();
@@ -294,7 +298,7 @@ describe("MyProgressPage", () => {
       error: { type: "about:blank", title: "Internal Server Error", status: 500, detail: "Your day history could not be loaded." },
     });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Your day history could not be loaded.")).toBeInTheDocument();
     expect(screen.queryByText(/Nothing recorded this month yet./)).not.toBeInTheDocument();
@@ -313,8 +317,168 @@ describe("MyProgressPage", () => {
     });
     listMyDays.mockResolvedValue({ data: [], error: undefined });
 
-    render(await MyProgressPage());
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("Your month could not be loaded.");
+  });
+
+  /**
+   * The week/month toggle (confirmed direction: a toggle defaulting to the
+   * full month). `dash()`'s `today` is 2026-08-03; the trailing window is
+   * the 7 days ending there, so 2026-07-29 is one day OUTSIDE it and
+   * 2026-07-31 is the oldest date still inside it.
+   */
+  describe("the This week / This month toggle", () => {
+    const twoWeeksOfDays = [
+      { date: "2026-07-27", status: "onTime", reportStatus: "InReview", reportId: "r1", absenceReason: null, mentorNote: null, entries: [{ id: "e1", entryDate: "2026-07-27", body: "Outside the trailing week.", submittedAt: "2026-07-29T10:00:00.000Z", isLate: false, isExtra: false, meetingMinutes: null }] },
+      { date: "2026-07-31", status: "onTime", reportStatus: "InReview", reportId: "r2", absenceReason: null, mentorNote: null, entries: [{ id: "e2", entryDate: "2026-07-31", body: "Just inside the trailing week.", submittedAt: "2026-07-31T10:00:00.000Z", isLate: false, isExtra: false, meetingMinutes: null }] },
+      { date: "2026-08-03", status: "late", reportStatus: "InReview", reportId: "r3", absenceReason: null, mentorNote: null, entries: [{ id: "e3", entryDate: "2026-08-03", body: "Today.", submittedAt: "2026-08-03T10:00:00.000Z", isLate: true, isExtra: false, meetingMinutes: null }] },
+    ];
+
+    it("shows the full month by default, with no range param", async () => {
+      getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+      apiClient.mockResolvedValue({});
+      getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+      listMyDays.mockResolvedValue({ data: twoWeeksOfDays, error: undefined });
+
+      render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
+
+      expect(screen.getByText("Outside the trailing week.")).toBeInTheDocument();
+      expect(screen.getByText("Just inside the trailing week.")).toBeInTheDocument();
+      expect(screen.getByText("Today.")).toBeInTheDocument();
+    });
+
+    it("hides a day outside the trailing 7-day window when range=week", async () => {
+      getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+      apiClient.mockResolvedValue({});
+      getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+      listMyDays.mockResolvedValue({ data: twoWeeksOfDays, error: undefined });
+
+      render(await MyProgressPage({ searchParams: Promise.resolve({ range: "week" }) }));
+
+      expect(screen.queryByText("Outside the trailing week.")).not.toBeInTheDocument();
+      expect(screen.getByText("Just inside the trailing week.")).toBeInTheDocument();
+      expect(screen.getByText("Today.")).toBeInTheDocument();
+    });
+
+    it("marks the active toggle with aria-current, never colour alone (§12)", async () => {
+      getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+      apiClient.mockResolvedValue({});
+      getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+      listMyDays.mockResolvedValue({ data: twoWeeksOfDays, error: undefined });
+
+      render(await MyProgressPage({ searchParams: Promise.resolve({ range: "week" }) }));
+
+      expect(screen.getByRole("link", { name: "This week" })).toHaveAttribute("aria-current", "page");
+      expect(screen.getByRole("link", { name: "This month" })).not.toHaveAttribute("aria-current");
+    });
+
+    it("shows a week-specific empty state, not the month one, when the week has nothing", async () => {
+      getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+      apiClient.mockResolvedValue({});
+      getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+      // Only the OUTSIDE-the-window day exists.
+      listMyDays.mockResolvedValue({ data: [twoWeeksOfDays[0]], error: undefined });
+
+      render(await MyProgressPage({ searchParams: Promise.resolve({ range: "week" }) }));
+
+      expect(screen.getByText("Nothing recorded this week yet.")).toBeInTheDocument();
+      expect(screen.queryByText("Nothing recorded this month yet.")).not.toBeInTheDocument();
+    });
+
+    it("falls back to the full month for an unrecognised range value, rather than showing nothing", async () => {
+      getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+      apiClient.mockResolvedValue({});
+      getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+      listMyDays.mockResolvedValue({ data: twoWeeksOfDays, error: undefined });
+
+      render(await MyProgressPage({ searchParams: Promise.resolve({ range: "nonsense" }) }));
+
+      expect(screen.getByText("Outside the trailing week.")).toBeInTheDocument();
+    });
+
+    it("falls back to the full month for an unrecognised range value, rather than showing nothing", async () => {
+      getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+      apiClient.mockResolvedValue({});
+      getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+      listMyDays.mockResolvedValue({ data: twoWeeksOfDays, error: undefined });
+
+      render(await MyProgressPage({ searchParams: Promise.resolve({ range: "nonsense" }) }));
+
+      expect(screen.getByText("Outside the trailing week.")).toBeInTheDocument();
+    });
+  });
+
+  /**
+   * Multiple entries on one day used to render as two bare paragraphs with
+   * nothing between them but a gap -- no timestamp, no late/extra marker,
+   * nothing to tell them apart. Each entry now carries its own meta row,
+   * matching what student-today.tsx's "Recent days" already does.
+   */
+  describe("differentiating two entries on the same day", () => {
+    it("gives each entry its own timestamp, with no redundant on-time pill", async () => {
+      getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+      apiClient.mockResolvedValue({});
+      getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+      listMyDays.mockResolvedValue({
+        data: [{
+          date: "2026-08-03", status: "onTime", reportStatus: "InReview", reportId: "r1",
+          absenceReason: null, mentorNote: null,
+          entries: [
+            {
+              id: "morning", entryDate: "2026-08-03", body: "Morning standup notes.",
+              submittedAt: "2026-08-03T04:30:00.000Z", isLate: false, isExtra: false,
+            },
+            {
+              id: "evening", entryDate: "2026-08-03", body: "Evening wrap-up.",
+              submittedAt: "2026-08-03T13:05:00.000Z", isLate: false, isExtra: false,
+            },
+          ],
+        }],
+        error: undefined,
+      });
+
+      render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
+
+      // 2026-08-03T04:30:00.000Z is 10:00am Colombo; T13:05:00.000Z is 6:35pm.
+      // Both entries distinguish themselves by TIME alone -- neither carries
+      // its own "On time" pill, because that is the default outcome and the
+      // day's single header pill already states it once.
+      expect(screen.getByText("10:00 am")).toBeInTheDocument();
+      expect(screen.getByText("6:35 pm")).toBeInTheDocument();
+      expect(screen.getAllByText("On time")).toHaveLength(1); // the day pill, alone
+    });
+
+    it("marks a same-day second entry as late independently of the day's own outcome", async () => {
+      getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+      apiClient.mockResolvedValue({});
+      getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+      listMyDays.mockResolvedValue({
+        data: [{
+          date: "2026-08-03", status: "late", reportStatus: "InReview", reportId: "r1",
+          absenceReason: null, mentorNote: null,
+          entries: [
+            {
+              id: "first", entryDate: "2026-08-03", body: "Filed on time.",
+              submittedAt: "2026-08-03T04:30:00.000Z", isLate: false, isExtra: false,
+            },
+            {
+              id: "second", entryDate: "2026-08-03", body: "A late follow-up.",
+              submittedAt: "2026-08-04T03:00:00.000Z", isLate: true, isExtra: false,
+            },
+          ],
+        }],
+        error: undefined,
+      });
+
+      render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
+
+      // The first entry is plain on-time -- no pill of its own, nothing to
+      // find beyond its timestamp. The second IS informative: its own
+      // outcome (late) differs from the day's, so it earns the one pill
+      // that is not redundant with the header.
+      expect(screen.queryAllByText("On time")).toHaveLength(0);
+      expect(screen.getAllByText("Late")).toHaveLength(2); // day pill + the one late entry
+    });
   });
 });

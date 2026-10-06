@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { civilDate } from "@irp/core";
 import { getMyDashboard, listMyDays } from "@irp/client";
 import { getCurrentUserOrRedirect, apiClient } from "@/lib/api-client";
 import { PageTitle } from "@/components/ui/page-title";
@@ -8,8 +10,9 @@ import { CountsRow } from "@/components/ui/counts-row";
 import { StatusPill } from "@/components/ui/status-pill";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MentorNote } from "@/components/ui/mentor-note";
+import { isWithinTrailingWeek } from "../day-range-filter";
 import { cycleHeading } from "../cycle-heading";
-import { formatCivilDateLabel } from "../format-civil-date";
+import { formatCivilDateLabel, ENTRY_TIME_FORMAT } from "../format-civil-date";
 
 /** Required-day outcomes whose result is final -- FR-29's history list keeps
  * a day for this reason alone even when it carries no entry (e.g. Missed). */
@@ -35,50 +38,18 @@ const SETTLED_STATUSES = new Set(["onTime", "late", "absent", "missed"]);
  * boundary (the API is), just the wrong screen for them — a mentor holds no
  * enrolment and would see an empty month.
  */
-/**
- * "Month 3 of 6" as pips — the programme position, which until now rendered
- * only as text inside cycleHeading().
- *
- * Renders NOTHING when `seq` is null. A mid-cycle joiner has no sequence until
- * their first evaluated cycle opens (FR-27), and cycleHeading() already handles
- * that branch by saying so in words; drawing six empty circles beside it would
- * contradict the sentence next to them. Never "Month null of 6", never NaN pips.
- *
- * ENTIRELY aria-hidden, with no screen-reader text of its own. §12 forbids a
- * visual carrying meaning ALONE — these do not: cycleHeading() renders "Month 3
- * of 6 · 10 July – 9 August" as the label immediately beside them, so the
- * information is already in text. An sr-only duplicate here would make a screen
- * reader announce "Month 3 of 6" twice in a row, which is noise, not access.
- * (It also made getByText(/Month 3 of 6/) ambiguous, which is how the
- * duplication was caught.)
- */
-function ProgrammePips({ seq, total }: { seq: number | null; total: number }) {
-  if (seq === null || total < 1) return null;
-  return (
-    <div aria-hidden="true" className="flex items-center gap-3">
-      <span className="flex items-center gap-1.5">
-        {Array.from({ length: total }, (_, i) => (
-          <span
-            key={i}
-            className="inline-block rounded-full"
-            style={{
-              width: "8px",
-              height: "8px",
-              // Months already completed and the current one are filled; the
-              // rest are outlined. --primary-weak is §3.1's "primary-tinted
-              // fill", not a status colour: programme position is not a
-              // compliance outcome and must not borrow the status ramp.
-              background: i < seq ? "var(--primary)" : "var(--primary-weak)",
-              border: i < seq ? "none" : "1px solid var(--line-strong)",
-            }}
-          />
-        ))}
-      </span>
-    </div>
-  );
-}
 
-export default async function MyMonthPage() {
+export default async function MyMonthPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
+  const { range } = await searchParams;
+  // "week" is the only non-default value this understands. Anything else --
+  // a stray query string, a stale bookmark -- falls back to the full month
+  // rather than silently showing nothing.
+  const showWeekOnly = range === "week";
+
   const user = await getCurrentUserOrRedirect();
   if (user.role !== "Student") redirect("/");
 
@@ -132,6 +103,13 @@ export default async function MyMonthPage() {
     )
     .reverse();
 
+  // The week filter is a SEPARATE pass over the same content filter above,
+  // not a replacement for it: "This week" must still hide a quiet weekend or
+  // a day still inside grace, for the same reason the full month does.
+  const visibleDays = showWeekOnly
+    ? orderedDays.filter((day) => isWithinTrailingWeek(civilDate(day.date), civilDate(dashboard.today)))
+    : orderedDays;
+
   return (
     <div>
       <PageTitle>My progress</PageTitle>
@@ -147,59 +125,131 @@ export default async function MyMonthPage() {
         came out.
       */}
       <div className="mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <SectionLabel>{cycleHeading(dashboard)}</SectionLabel>
-          <ProgrammePips seq={dashboard.cycle.seq} total={dashboard.programmeMonths} />
-        </div>
+        <SectionLabel>{cycleHeading(dashboard)}</SectionLabel>
         <div className="mt-2">
           <CountsRow items={[{ tone: "ink", text: complianceLabel, strong: true }]} />
         </div>
       </div>
 
-      <SectionLabel>Your days</SectionLabel>
-      <div className="mt-2 flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <SectionLabel>Your days</SectionLabel>
+        {/*
+          The same chip + aria-current pattern Roster's batch switcher uses
+          (house convention), not a client-side toggle: a plain GET link
+          keeps the page server-rendered, bookmarkable, and consistent with
+          every other filter in the app. Defaults to the full month -- the
+          confirmed direction was a toggle, not a default-collapsed view.
+        */}
+        <div className="flex gap-2">
+          <Link href="/my-progress" aria-current={!showWeekOnly ? "page" : undefined} className="chip">
+            This month
+          </Link>
+          <Link href="/my-progress?range=week" aria-current={showWeekOnly ? "page" : undefined} className="chip">
+            This week
+          </Link>
+        </div>
+      </div>
+      <div className="mt-2">
         {daysError !== undefined ? (
           <Panel>
             <p role="alert" style={{ color: "var(--st-missed)" }}>
               {daysError.detail ?? daysError.title ?? "Your day history could not be loaded."}
             </p>
           </Panel>
-        ) : orderedDays.length === 0 ? (
+        ) : visibleDays.length === 0 ? (
           <Panel>
             <EmptyState
-              title="Nothing recorded this month yet."
+              title={showWeekOnly ? "Nothing recorded this week yet." : "Nothing recorded this month yet."}
               hint="Your entries appear here as you submit them."
             />
           </Panel>
         ) : (
-          orderedDays.map((day) => (
-            <Panel
-              key={day.date}
-              title={formatCivilDateLabel(day.date)}
-              aside={
-                day.status === "none" ? undefined : (
-                  <StatusPill status={day.status} reportStatus={day.reportStatus} />
-                )
-              }
-            >
-              {day.absenceReason !== null && (
-                <p style={{ color: "var(--ink-muted)" }}>{day.absenceReason}</p>
-              )}
+          /*
+            A TABLE was considered and set aside (see the conversation this
+            answers): every row here can carry a variable number of prose
+            entries plus an expandable mentor note, which does not survive
+            being forced into fixed cells without truncating the one thing
+            this page exists to let a student re-read. A table also reads
+            naturally for SHORT, uniform values -- Roster's one row per
+            student is exactly that -- but a day's content is neither short
+            nor uniform.
 
-              {day.entries.map((entry) => (
-                <p
-                  key={entry.id}
-                  data-testid="day-entry-body"
-                  className="prose"
-                  style={{ color: "var(--ink)" }}
-                >
-                  {entry.body}
-                </p>
-              ))}
+            What was genuinely wrong was each day getting its own heavy
+            bordered, surfaced box -- N capsules stacked with gaps between
+            them, each repeating the same background and border everyone
+            could already see belonged to a list, not N separate things. One
+            Panel now holds the whole month; a hairline (--line, decorative,
+            no contrast requirement -- design-system §3.1) divides days
+            instead of a second border per day, and padding comes from
+            spacing, not from a box each row has to re-draw.
+          */
+          <Panel>
+            {visibleDays.map((day, i) => (
+              <div
+                key={day.date}
+                // §5's own thesis -- "rhythm IS the density signal" -- applied
+                // between DAYS, not just within one: mt-8/pt-8 (double the
+                // within-day rhythm below) is what makes "new day" read as a
+                // clearly bigger gap than "next entry, same day", rather than
+                // the two kinds of break looking the same size.
+                className={i > 0 ? "mt-8 border-t pt-8" : ""}
+                style={i > 0 ? { borderColor: "var(--line)" } : undefined}
+              >
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <SectionLabel>{formatCivilDateLabel(day.date)}</SectionLabel>
+                  {day.status !== "none" && (
+                    <StatusPill status={day.status} reportStatus={day.reportStatus} />
+                  )}
+                </div>
 
-              <MentorNote note={day.mentorNote} />
-            </Panel>
-          ))
+                {day.absenceReason !== null && (
+                  <p style={{ color: "var(--ink-muted)" }}>{day.absenceReason}</p>
+                )}
+
+                {/*
+                  Each entry is its own uniform block: a meta line (time +
+                  outcome) ABOVE the body, never beside it. Side-by-side, the
+                  meta column's vertical position drifted with however many
+                  lines the body wrapped to, so entries never looked like
+                  repeats of the same shape. Stacked, every entry has the
+                  identical two-part structure regardless of how long the
+                  body runs -- the one thing that can be made consistent
+                  without truncating the text itself (§3's own rule: never
+                  clip prose in a fixed box).
+                */}
+                {/*
+                  No "On time" pill per entry: that is every entry's DEFAULT
+                  state, and the day's own header pill already says so once.
+                  Repeating it per entry was furniture, the exact thing §7
+                  already rejects a pill for ("a pill reading '— —' … is
+                  furniture, not a status"). Late/extra are kept -- those are
+                  the genuinely informative case, an entry's own outcome
+                  differing from its day's, which is the whole reason this
+                  per-entry marker exists.
+                */}
+                {day.entries.map((entry, j) => (
+                  <div key={entry.id} className={j > 0 ? "mt-4" : ""}>
+                    <div
+                      className="mb-1 flex items-center gap-2 text-sm"
+                      style={{ color: "var(--ink-muted)" }}
+                    >
+                      <span>{ENTRY_TIME_FORMAT.format(new Date(entry.submittedAt))}</span>
+                      {(entry.isLate || entry.isExtra) && (
+                        <StatusPill status={entry.isLate ? "late" : "extra"} />
+                      )}
+                    </div>
+                    <p data-testid="day-entry-body" className="prose" style={{ color: "var(--ink)" }}>
+                      {entry.body}
+                    </p>
+                  </div>
+                ))}
+
+                <div className="mt-3">
+                  <MentorNote note={day.mentorNote} />
+                </div>
+              </div>
+            ))}
+          </Panel>
         )}
       </div>
 

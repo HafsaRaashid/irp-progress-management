@@ -72,10 +72,23 @@ function JourneyBar({ seq, total }: { seq: number | null; total: number }) {
   return (
     <div className="mt-5">
       <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="tabular text-xs uppercase tracking-[0.08em]" style={{ opacity: 0.85 }}>
+        {/*
+          Both labels are FIGURES ("Month 3 of 6", "3 to go") and design-system
+          §4 names "N of M" explicitly as mono material -- the same rule the
+          ribbon's own date-range caption already follows. Forgetting
+          fontFamily here (tabular alone is not enough) is what put a sans
+          label right beside a mono one and made the two look mismatched.
+        */}
+        <span
+          className="tabular text-xs uppercase tracking-[0.08em]"
+          style={{ opacity: 0.85, fontFamily: "var(--font-mono)" }}
+        >
           Month {seq} of {total}
         </span>
-        <span className="tabular text-xs" style={{ opacity: 0.7 }}>
+        <span
+          className="tabular text-xs"
+          style={{ opacity: 0.7, fontFamily: "var(--font-mono)" }}
+        >
           {total - seq === 0 ? "final month" : `${String(total - seq)} to go`}
         </span>
       </div>

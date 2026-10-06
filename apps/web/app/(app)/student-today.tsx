@@ -15,7 +15,7 @@ import { AbsenceToggle } from "./absence-toggle";
 import { cycleRangeLabel } from "./cycle-heading";
 import { streakFor, streakLabel } from "./streak";
 import { motivationFor } from "./motivation";
-import { formatCivilDateLabel, formatWeekdayName } from "./format-civil-date";
+import { formatCivilDateLabel, formatWeekdayName, ENTRY_TIME_FORMAT } from "./format-civil-date";
 
 // §11's deadline copy ("You can still submit for {date} until …") is always
 // evaluated in Asia/Colombo, never the deploy region's local zone.
@@ -36,13 +36,6 @@ const GRACE_CLOSED_FORMAT = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Colombo",
   day: "numeric",
   month: "long",
-});
-
-const ENTRY_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Asia/Colombo",
-  hour: "numeric",
-  minute: "2-digit",
-  hour12: true,
 });
 
 /**
@@ -90,6 +83,17 @@ export async function StudentToday({ displayName, role }: { displayName: string;
   // (index 0, since targetDates is most-recent-first) -- see its own
   // "Today is always submittable" invariant.
   const today = openWindow.targetDates[0];
+
+  // Which open days can still carry an absence. Weekday-only (the glossary:
+  // "absence does not apply to weekends -- there is nothing to be absent
+  // from"), and only while nothing has been recorded for the day yet. The
+  // submission window DOES include Saturday and Sunday on a Monday, so the
+  // weekend case is real rather than theoretical.
+  const composerTargets = openWindow.targetDates.map((date) => {
+    const day = byDate.get(date);
+    const hasRecord = (day?.entries.length ?? 0) > 0 || (day?.absenceReason ?? null) !== null;
+    return { date, canBeAbsent: isWeekday(date) && !hasRecord };
+  });
 
   return (
     <div>
@@ -146,73 +150,71 @@ export async function StudentToday({ displayName, role }: { displayName: string;
         The scan sits left, the action sits right, and both are above the fold
         at the minimum supported width.
       */}
-      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+
+      {/* LEFT COLUMN — the record: what this month looks like, then the days
+          themselves. The day list lives HERE rather than full-width beneath,
+          because a short left column next to a taller composer left ~110px of
+          dead space and wrapped the day cards into an L around it. */}
+      <div>
       {dashboard !== undefined && (
         /* ONE grid child, not a fragment. A fragment's children become
            separate grid items, which put the counts row in the right-hand
            column and bumped the composer onto a new row. */
-        <div className="card-rise">
-          <div className="mb-6">
-            <CycleRibbon
-              days={toStudentRibbonDays([...dashboard.days], dashboard.today)}
-              extraAfter={[...dashboard.extraAfter]}
-              label={cycleRangeLabel(dashboard)}
-              // §10's one delight moment. Set HERE and nowhere else:
-              // mentor-today.tsx renders the same component and must keep the
-              // default (ADR-0032).
-              celebrate
-            />
-          </div>
+        <div className="card-rise mb-6">
+          <CycleRibbon
+            days={toStudentRibbonDays([...dashboard.days], dashboard.today)}
+            extraAfter={[...dashboard.extraAfter]}
+            label={cycleRangeLabel(dashboard)}
+            // §10's one delight moment. Set HERE and nowhere else:
+            // mentor-today.tsx renders the same component and must keep the
+            // default (ADR-0032).
+            celebrate
+            // The counts row and streak chip now render INSIDE the ribbon's
+            // own surfaced panel via `caption`, rather than in a second div
+            // floating on the bare canvas below it. The two told the same
+            // story (what this cycle's ribbon shows, read as numbers) and
+            // belonged in one block, not a panel followed by an unboxed row.
+            caption={
+              <div className="flex flex-wrap items-baseline justify-between gap-4">
+                {/*
+                  CountsRow is the status vocabulary (§3.2) and is not
+                  modified by this slice -- only its wrapper moved. The streak
+                  chip sits BESIDE it, never inside it: a personal count in
+                  --ink-muted, carrying no status colour, because "how many
+                  days you have submitted" is not a compliance outcome.
 
-          {/*
-            The streak chip sits BESIDE CountsRow, never inside it: CountsRow
-            is the status vocabulary (§3.2) and is not modified by this slice.
-            This is a personal count in --ink-muted, carrying no status colour,
-            because "how many days you have submitted" is not a compliance
-            outcome.
-
-            It names no window -- the ribbon directly above already renders
-            "Month 3 of 6 · 10 July – 9 August", so the context is one element
-            up. FR-30: own data only, a count with its own denominator, never
-            a rate, a rank or a peer.
-          */}
-          <div className="mb-8 flex flex-wrap items-baseline justify-between gap-4">
-            <CountsRow
-              items={[
-                { tone: "ok", text: `${String(dashboard.summary.onTime)} on time` },
-                { tone: "late", text: `${String(dashboard.summary.late)} late` },
-                { tone: "absent", text: `${String(dashboard.summary.absent)} absent` },
-                { tone: "missed", text: `${String(dashboard.summary.missed)} missed` },
-                ...(dashboard.summary.extra > 0
-                  ? [{ tone: "muted" as const, text: `+${String(dashboard.summary.extra)} extra` }]
-                  : []),
-              ]}
-            />
-            {streakLabel(streakFor(dashboard.days)) !== null && (
-              <span
-                data-testid="streak-chip"
-                className="tabular text-sm"
-                style={{ color: "var(--ink-muted)" }}
-              >
-                {streakLabel(streakFor(dashboard.days))}
-              </span>
-            )}
-          </div>
+                  It names no window -- the label right above this caption
+                  already renders "10 July – 9 August" (and the greeting
+                  band's journey bar carries "Month 3 of 6"), so the context
+                  is already on screen. FR-30: own data only, a count with its
+                  own denominator, never a rate, a rank or a peer.
+                */}
+                <CountsRow
+                  items={[
+                    { tone: "ok", text: `${String(dashboard.summary.onTime)} on time` },
+                    { tone: "late", text: `${String(dashboard.summary.late)} late` },
+                    { tone: "absent", text: `${String(dashboard.summary.absent)} absent` },
+                    { tone: "missed", text: `${String(dashboard.summary.missed)} missed` },
+                    ...(dashboard.summary.extra > 0
+                      ? [{ tone: "muted" as const, text: `+${String(dashboard.summary.extra)} extra` }]
+                      : []),
+                  ]}
+                />
+                {streakLabel(streakFor(dashboard.days)) !== null && (
+                  <span
+                    data-testid="streak-chip"
+                    className="tabular text-sm"
+                    style={{ color: "var(--ink-muted)" }}
+                  >
+                    {streakLabel(streakFor(dashboard.days))}
+                  </span>
+                )}
+              </div>
+            }
+          />
         </div>
       )}
-
-      {/* RIGHT COLUMN — the action. Elevated onto --surface so the composer
-          reads as the page's primary job rather than as three loose controls
-          on the canvas, which is how it sat before. */}
-      <div className="card-rise" style={{ ["--rise-delay" as string]: "80ms" }}>
-        <div
-          className="rounded-[var(--radius-panel)] border p-6"
-          style={{ background: "var(--surface)", borderColor: "var(--line)" }}
-        >
-          <EntryComposer targetDates={openWindow.targetDates} />
-        </div>
-      </div>
-      </div>
 
       {error !== undefined && (
         <p role="alert" className="mb-4 text-sm" style={{ color: "var(--st-missed)" }}>
@@ -238,6 +240,13 @@ export async function StudentToday({ displayName, role }: { displayName: string;
           return (
             <Panel
               key={date}
+              // A day with nothing recorded gets the QUIET treatment -- a
+              // dashed, unfilled slot rather than the same solid card a real
+              // submission gets. Without this, a history that is mostly
+              // still-open days read as a wall of identical cards, with
+              // nothing to draw the eye to the ones that actually hold
+              // something.
+              quiet={noRecord}
               title={formatCivilDateLabel(date)}
               aside={
                 day === undefined || day.status === "none" ? undefined : (
@@ -262,6 +271,12 @@ export async function StudentToday({ displayName, role }: { displayName: string;
                 </p>
               )}
 
+              {/*
+                No "On time" pill per entry: that is every entry's DEFAULT
+                state, and the day's own aside pill above already says so
+                once. Late/extra stay -- an entry's own outcome differing
+                from its day's is the genuinely informative case.
+              */}
               {entries.map((entry) => (
                 <div key={entry.id} className="mb-3 flex items-start justify-between gap-3">
                   <p className="prose" style={{ color: "var(--ink)" }}>{entry.body}</p>
@@ -270,7 +285,9 @@ export async function StudentToday({ displayName, role }: { displayName: string;
                     style={{ color: "var(--ink-muted)" }}
                   >
                     <span>{ENTRY_TIME_FORMAT.format(new Date(entry.submittedAt))}</span>
-                    <StatusPill status={entry.isLate ? "late" : entry.isExtra ? "extra" : "onTime"} />
+                    {(entry.isLate || entry.isExtra) && (
+                      <StatusPill status={entry.isLate ? "late" : "extra"} />
+                    )}
                   </div>
                 </div>
               ))}
@@ -279,14 +296,35 @@ export async function StudentToday({ displayName, role }: { displayName: string;
                   Renders nothing when there is no note -- see MentorNote. */}
               <MentorNote note={day?.mentorNote ?? null} />
 
-              {weekday && (noRecord || absenceReason !== null) && (
+              {/* Only REMOVAL lives here now. Marking absent moved into the
+                  composer, which already owns the date picker -- "submit an
+                  update" and "I was absent" are two answers to one question
+                  and had no business being in two different widgets. This
+                  acts on something already recorded and shown right here. */}
+              {weekday && absenceReason !== null && (
                 <AbsenceToggle date={date} absenceReason={absenceReason} />
               )}
             </Panel>
           );
         })}
       </div>
+      </div>
 
+      {/* RIGHT COLUMN — the action. Elevated onto --surface so the composer
+          reads as the page's primary job rather than as three loose controls
+          on the canvas, which is how it sat before. Not sticky: it stays in
+          normal flow with the left column rather than pinning in place while
+          the day list scrolls past it. */}
+      <div className="card-rise" style={{ ["--rise-delay" as string]: "80ms" }}>
+        <div
+          className="rounded-[var(--radius-panel)] border p-6"
+          style={{ background: "var(--surface)", borderColor: "var(--line)" }}
+        >
+          <EntryComposer targets={composerTargets} />
+        </div>
+      </div>
+
+      </div>
     </div>
   );
 }
