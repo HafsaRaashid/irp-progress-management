@@ -135,9 +135,9 @@ test.describe("mentor flows (dev-admin-1)", () => {
       (await dateInputs.all()).map((l) => l.inputValue()),
     );
     const openCandidates = dates.filter((d) => canSubmitFor(civilDate(d), now));
-    const closedDate = dates.find((d) => !canSubmitFor(civilDate(d), now)) ?? "";
+    const closedCandidates = dates.filter((d) => !canSubmitFor(civilDate(d), now));
     expect(openCandidates.length, "no still-open day on screen").toBeGreaterThan(0);
-    expect(closedDate, "no closed day on screen to finish").not.toBe("");
+    expect(closedCandidates.length, "no closed day on screen to finish").toBeGreaterThan(0);
 
     // The mixed persona's seed pattern skips roughly one working day in six
     // (run-seed.ts: dayIndex % 6 === 3) -- a skipped day has no entry and so
@@ -158,11 +158,30 @@ test.describe("mentor flows (dev-admin-1)", () => {
         break;
       }
     }
-    // SKIP, not fail, when no open day carries a report. The precondition
-    // legitimately does not exist on every run, and a red check that depends
-    // on the wall clock teaches the reader to re-run rather than to read --
-    // the same objection playwright.config.ts records against unpinned
-    // `workers`.
+    // The CLOSED half needs the same guard, for the same reason: saveDayRecord
+    // only calls transitionDailyReport when the form's hidden `reportId` is
+    // non-empty (review-actions.ts), and showForm renders for every weekday
+    // that isn't Evaluated yet regardless of whether a report exists at all
+    // (page.tsx's `showForm`) -- so the FIRST closed date on screen can be a
+    // skipped or absent day with no report, and saving it will correctly
+    // leave it unfinished. Picking that date and then asserting "· Saved"
+    // was always a test bug, not a locking bug: it exercises a day that has
+    // nothing to finish.
+    let closedDate = "";
+    for (const candidate of closedCandidates) {
+      const alreadyInReview = await dayPanelByHiddenDate(page, candidate)
+        .getByText("In review")
+        .count();
+      if (alreadyInReview > 0) {
+        closedDate = candidate;
+        break;
+      }
+    }
+    // SKIP, not fail, when no open or closed day on screen carries a report.
+    // The precondition legitimately does not exist on every run, and a red
+    // check that depends on the wall clock teaches the reader to re-run
+    // rather than to read -- the same objection playwright.config.ts records
+    // against unpinned `workers`.
     //
     // Two independent reasons it can be absent, neither a defect:
     //
@@ -173,17 +192,22 @@ test.describe("mentor flows (dev-admin-1)", () => {
     //     report is born only at student submission).
     //  2. THE PERSONA'S PATTERN. The mixed persona skips roughly one working
     //     day in six and is absent one in nine. An absence creates no report
-    //     either. So the previous weekday can be reportless too.
+    //     either. So either the previous weekday or an older closed day can
+    //     be reportless too.
     //
-    // Hit both at once -- as on Tue 6 Oct 2026, when the previous weekday was
-    // an absence and today was seeded pre-17:00 -- and there is nothing for
-    // this assertion to act on. The rest of the file still covers the locking
-    // save on a CLOSED day, which is the FR-20 half that matters most.
+    // Hit either at once -- as on Tue 6 Oct 2026, when the previous weekday
+    // was an absence and today was seeded pre-17:00 -- and there is nothing
+    // for the corresponding half of this test to act on.
     test.skip(
       openDate === "",
       "no still-open day carries a report in this seed run (seeded before 17:00 Colombo, " +
         "and/or the persona's open days are skips or absences) -- nothing to test the " +
         "non-locking save against",
+    );
+    test.skip(
+      closedDate === "",
+      "no closed day carries a report in this seed run (the persona's closed days are all " +
+        "skips or absences) -- nothing to test the locking save against",
     );
 
     // ── half one: a day still inside the window saves WITHOUT finishing ──
