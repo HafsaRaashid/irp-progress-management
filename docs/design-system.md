@@ -269,7 +269,7 @@ behaviour is structural (sidebar collapse below 1440px), never fluid typography.
 │ ▪ Roster   │                  content · --bg                           │
 │ ▪ Review 3 │                                                           │
 │ ▪ Cycles   │                                                           │
-│ ▪ Students │                                                           │
+│ ▪ Users    │                                                           │
 │            │                                                           │
 │ ─────────  ← border-top rule, --line                                   │
 │ ▪ Settings │                                                           │
@@ -305,10 +305,15 @@ itself, which would sit it directly under the last primary item instead. **Sign 
 below Settings inside that same divider group** — a peer of Settings, not a stray button loose in
 the frame — rather than living in the topbar it occupied before this slice (O-15). Settings
 appears on **both** roles' frames: appearance (theme) is a personal preference, not a mentor
-privilege. The page it links to gates its own sections rather than the route bouncing a Student
-away — Settings shows Appearance to everyone and **Register** only to a mentor (ADR-0022);
-**Create batch** lives on Students instead, per **ADR-0023**, which supersedes that part of
-ADR-0022's scope.
+privilege, and it is now **all** Settings carries, for either role — **Register** and
+**Create batch** both live on `Users` (labelled "Users" on screen since **ADR-0034**, route still
+`/students`) instead. ADR-0022 moved Register to Settings in 2026-08; ADR-0023 brought Create
+batch back almost immediately; ADR-0034 (2026-10-08) finishes the reversal and supersedes what was
+left of ADR-0022 — there was never a distinct "mentor management" surface for the split to serve
+(FR-4: every Admin shares access across every batch), so `Users` is one directory table (Name /
+Email / Role / Batch / Actions) with All/Students/Mentors filter chips, Add student and Create
+batch as collapsed disclosures, and a shared, pre-fillable Transfer disclosure — not four
+always-open panels.
 
 ---
 

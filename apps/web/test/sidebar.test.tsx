@@ -91,7 +91,7 @@ describe("Sidebar Settings entry", () => {
     render(<Sidebar role="Admin" />);
     // If an icon ever contributed to the name, this exact-match query breaks.
     // That is the assertion that proves the icons are aria-hidden.
-    for (const label of ["Today", "Roster", "Cycles", "Students", "Settings"]) {
+    for (const label of ["Today", "Roster", "Cycles", "Users", "Settings"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });

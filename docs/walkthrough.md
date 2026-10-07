@@ -137,41 +137,49 @@ picker.
 - The **Evaluation** column reads *Awaiting evaluation* for everyone, and will until Plan 9. That
   is a designed state, not a loading failure.
 
-### 5. Students
+### 5. Users (route `/students`, ADR-0034)
 
-`Students`. Transfer a student between batches, archive one, and **create a batch** — back here as
-a third panel stacked under `Transfer` (ADR-0023). **Register** is not here — see the next section.
+`Users` — the label as of 2026-10-08; the route is still `/students`, unchanged. Add a student or
+a mentor, create a batch, transfer a student between batches, and archive or restore anyone, all
+from one page: a single directory table (Name / Email / Role / Batch / Actions) with **All /
+Students / Mentors** filter chips above it, and **Add student** / **Create batch** as collapsed
+disclosures in the action row. Click **Transfer** on any student's row to open the one shared
+Transfer form, pre-filled with that student.
 
-- The archive view lists archived students read-only. Archiving revokes access without deleting
-  identity or history.
-- **Why `Create batch` came back.** ADR-0022 moved it to Settings along with `Register`, but with
-  only `Transfer` and `People` left on this page, `Transfer` — a short form — sat in the left half
-  of a two-column grid next to `People`'s much taller directory, leaving visible dead space below
-  it. ADR-0023 narrows ADR-0022's scope rather than reversing it: `Register` stays on Settings,
-  `Create batch` comes back here, and the left column now runs to a height comparable with `People`.
+- The archive view lists archived users read-only, with a Restore control. Archiving revokes
+  access without deleting identity or history.
+- **Why one table instead of a Students table and a separate mentor page.** Checked directly
+  against FR-4 (every Admin shares access across every batch — there is no mentor-to-batch
+  assignment to manage) and the mentor account's actual lifecycle operations (Register, Archive,
+  Restore — the same three a student account has): there is no mentor-specific capability for a
+  second page to exist around, so a Role column on one table is the accurate shape, not a
+  simplification.
+- **Why Register (and, earlier, Create batch) are back here.** ADR-0022 (2026-08-04) moved
+  Register to Settings because a page named "Students" minting mentor accounts was the wrong
+  mental model. ADR-0023 brought Create batch back almost immediately (a two-panel Settings/
+  Students split left Students with a visibly empty column). ADR-0034 (2026-10-08) finishes the
+  reversal: splitting one "manage who exists" task across two pages stopped paying for itself once
+  Create batch already proved the opposite was workable, so Register joined it, and the page took
+  the honest name — "Users" is what the API's own data model has called this all along.
 
-### 6. Settings (ADR-0021, ADR-0022, ADR-0023)
+### 6. Settings (ADR-0021, ADR-0034)
 
-`Settings`, pinned at the bottom of the sidebar. Two things happened here in this slice.
+`Settings`, pinned at the bottom of the sidebar. **Appearance — Light / Dark / Follow system** is
+the only section now, for every role — Register and Create batch both live on `Users` (previous
+section).
 
-- **Register a mentor or a student.** Moved off Students (ADR-0022): Students is the *management*
-  surface (Transfer, Create batch, People/archive), Settings is the *registration* surface.
-  Registering a student still takes a batch and a start date in the same step — there is no orphan
-  state where a student exists but belongs nowhere. `Create batch` itself is **not** here — ADR-0023
-  sent it back to Students once the two-panel Settings/Students split proved to leave Students with
-  a visibly empty column (see the previous section).
-- **Appearance — Light / Dark / Follow system.** This is worth demoing specifically because **dark
-  was unreachable before this slice.** ADR-0002 shipped dark tokens with full contrast audits, but
-  the only way to see them was to change the operating system's own theme — there was no in-app
-  switch. ADR-0021 makes it a first-class, persisted choice: pick **Dark**, and the whole app
-  repaints instantly (no reload, because the control writes the DOM directly), and the choice
-  survives a reload and a fresh sign-in because it is stored server-side in a cookie, not
-  `localStorage`. Every mentor screen in this walkthrough is worth a second pass in dark once you've
-  shown it in light. **One caveat, not fixed in this slice:** choosing Dark and then pressing the
-  browser's Back button can render the page back in the pre-choice theme until the next reload —
-  logged as O-16, see `handoff.md`.
-- **Settings is on both roles' sidebars.** Appearance belongs to everyone; the registration section
-  gates itself out for a Student rather than the page redirecting them away.
+- **Appearance is worth demoing specifically because dark was unreachable before Plan 7A shipped
+  this switch.** ADR-0002 shipped dark tokens with full contrast audits, but the only way to see
+  them was to change the operating system's own theme — there was no in-app switch. ADR-0021 makes
+  it a first-class, persisted choice: pick **Dark**, and the whole app repaints instantly (no
+  reload, because the control writes the DOM directly), and the choice survives a reload and a
+  fresh sign-in because it is stored server-side in a cookie, not `localStorage`. Every mentor
+  screen in this walkthrough is worth a second pass in dark once you've shown it in light. **One
+  caveat, not fixed in this slice:** choosing Dark and then pressing the browser's Back button can
+  render the page back in the pre-choice theme until the next reload — logged as O-16, see
+  `handoff.md`.
+- **Settings is on both roles' sidebars, and now renders identically for both** — there is no
+  remaining per-section gate to speak of, now that nothing on this page is mentor-only.
 
 ---
 

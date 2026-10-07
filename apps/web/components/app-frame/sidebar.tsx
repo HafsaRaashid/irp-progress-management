@@ -69,7 +69,10 @@ const MENTOR_DESTINATIONS: readonly Destination[] = [
   { label: "Today", href: "/", icon: TodayIcon },
   { label: "Roster", href: "/roster", icon: RosterIcon },
   { label: "Cycles", href: "/cycles", icon: CyclesIcon },
-  { label: "Students", href: "/students", icon: StudentsIcon },
+  // ADR-0034: label-only rename. The route stays /students (so does this
+  // file's icon import name) -- only the on-screen text changes, to match
+  // the page now managing every account, not just students.
+  { label: "Users", href: "/students", icon: StudentsIcon },
 ];
 
 const STUDENT_DESTINATIONS: readonly Destination[] = [

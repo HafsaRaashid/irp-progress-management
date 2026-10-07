@@ -15,16 +15,16 @@ vi.mock("@/lib/api-client", () => ({ getCurrentUserOrRedirect, apiClient }));
 // admin-actions.ts (unmocked -- exercised for real, same as review-page.test's
 // treatment of review-actions.ts) imports createUser/createBatch/
 // transferStudent/archiveUser/restoreUser as a single module; page.tsx itself
-// calls listBatches/listUsers. All seven are mocked here so the whole tree
-// runs without a real client or network access -- createUser stays mocked
-// even though RegisterForm no longer renders on this page (ADR-0022, it moved
-// to Settings and stayed there), because admin-actions.ts's module-level
-// import still pulls it out of @irp/client. createBatch is mocked for the
-// same reason AND is exercised directly: CreateBatchForm moved to Settings
-// alongside Register in ADR-0022, then moved back here in ADR-0023.
+// calls listBatches/listUsers/getBatchRoster. All eight are mocked here so the
+// whole tree runs without a real client or network access. createUser and
+// createBatch are both exercised directly: RegisterForm and CreateBatchForm
+// round-tripped Settings (ADR-0022) and back (ADR-0023 for Create batch,
+// ADR-0034 for Register) and render on this page again, inside the Add
+// student / Create batch disclosures.
 const {
   listBatches,
   listUsers,
+  getBatchRoster,
   createUser,
   createBatch,
   transferStudent,
@@ -33,6 +33,7 @@ const {
 } = vi.hoisted(() => ({
   listBatches: vi.fn(),
   listUsers: vi.fn(),
+  getBatchRoster: vi.fn(),
   createUser: vi.fn(),
   createBatch: vi.fn(),
   transferStudent: vi.fn(),
@@ -42,6 +43,7 @@ const {
 vi.mock("@irp/client", () => ({
   listBatches,
   listUsers,
+  getBatchRoster,
   createUser,
   createBatch,
   transferStudent,
@@ -108,6 +110,10 @@ function searchParams(view?: string) {
 function defaultReads() {
   listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
   listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+  // The People table's Batch column reads one roster per batch (page.tsx) --
+  // unmocked, getBatchRoster is undefined and the call throws. Empty by
+  // default; the dedicated Batch-column test below overrides it.
+  getBatchRoster.mockResolvedValue({ data: [], error: undefined });
 }
 
 describe("StudentsPage", () => {
@@ -125,52 +131,146 @@ describe("StudentsPage", () => {
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
     listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByLabelText("Batch name")).toBeInTheDocument();
   });
 
-  it("still does NOT carry Register — that stayed in Settings (ADR-0022)", async () => {
+  it("carries Register again — it came back from Settings (ADR-0034)", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
     listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
 
-    // ADR-0023 supersedes only part of 0022. Register must not come back too.
-    expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Role")).toBeInTheDocument();
   });
 
-  it("keeps Transfer and People, which are the management half", async () => {
+  it("RegisterForm hides batch/startDate for the Mentor role and omits the enrolment key entirely", async () => {
+    // Relocated from settings-page.test.tsx (ADR-0034): the component's own
+    // behaviour, unchanged by the move, now exercised wherever it renders.
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    defaultReads();
+    createUser.mockResolvedValue({ error: undefined, data: { id: "m2" } });
+
+    render(await StudentsPage({ searchParams: Promise.resolve({}) }));
+
+    // Student is the default role -- assert batch/start date are actually
+    // PRESENT first. Checking only the post-change Admin state would also
+    // pass against a form that never rendered these fields at all.
+    expect(screen.getByLabelText("Batch")).toBeInTheDocument();
+    expect(screen.getByLabelText("Start date")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Role"), { target: { value: "Admin" } });
+
+    expect(screen.queryByLabelText("Batch")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Start date")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new.mentor@bistecglobal.com" } });
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "New Mentor" } });
+    fireEvent.change(screen.getByLabelText("External id"), { target: { value: "oid-123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+
+    await screen.findByRole("status");
+
+    expect(createUser).toHaveBeenCalledTimes(1);
+    const callArgs = createUser.mock.calls[0]?.[0] as { body: Record<string, unknown> } | undefined;
+    expect(callArgs?.body.role).toBe("Admin");
+    expect(callArgs?.body).not.toHaveProperty("enrolment");
+  });
+
+  it("keeps Transfer and the directory table, which are the management half", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
     listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
 
-    // getAllByText, not getByText: TransferForm's own submit button is also
-    // labelled "Transfer" (forms.tsx:219), so the plain text match the brief
-    // specified finds two elements and throws.
+    // getAllByText, not getByText: TransferForm's own submit button and each
+    // row's per-student Transfer link are also text "Transfer" (forms.tsx,
+    // page.tsx), so a plain single match throws.
     expect(screen.getAllByText("Transfer").length).toBeGreaterThan(0);
-    expect(screen.getByText("People")).toBeInTheDocument();
-    // People lists both roles read back — a student and a mentor.
+    // The directory lists both roles read back — a student and a mentor, as
+    // a table (Name/Email/Role/Batch/Actions).
     expect(screen.getByText("Amaya Perera")).toBeInTheDocument();
     expect(screen.getByText("Dev Mentor")).toBeInTheDocument();
   });
 
-  it("sends a reader to Settings when nobody is registered yet", async () => {
+  it("shows a student's current batch from the roster read, and — for a mentor", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
+    listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+    // STUDENT_DETAIL appears in BATCH's roster -- the Batch column reads this
+    // back as "Batch Aurora" rather than re-deriving it from User (which
+    // carries no batch field at all, spec/openapi.yaml's User schema).
+    getBatchRoster.mockResolvedValue({
+      data: [{ student: { id: STUDENT_DETAIL.id, displayName: STUDENT_DETAIL.displayName, email: STUDENT_DETAIL.email } }],
+      error: undefined,
+    });
+
+    render(await StudentsPage({ searchParams: Promise.resolve({}) }));
+
+    const studentRow = screen.getByText("Amaya Perera").closest("tr");
+    expect(studentRow).not.toBeNull();
+    expect(studentRow).toHaveTextContent("Batch Aurora");
+
+    const mentorRow = screen.getByText("Dev Mentor").closest("tr");
+    expect(mentorRow).not.toBeNull();
+    expect(mentorRow).toHaveTextContent("—");
+  });
+
+  it("points a reader at Add student when nobody is registered yet", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
     listUsers.mockResolvedValue({ data: [], error: undefined });
+    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
 
-    // The old hint pointed at a Register panel on this page. That panel is gone.
-    expect(screen.getByText(/Settings/)).toBeInTheDocument();
+    // The hint used to point at Settings (ADR-0022). Register is back on this
+    // page now (ADR-0034), so the hint points at the disclosure above instead.
+    // The full sentence, not a bare "Add student" substring match -- the
+    // action row's own "+ Add student" summary matches that too.
+    expect(
+      screen.getByText("Use Add student above to register the first mentor or student."),
+    ).toBeInTheDocument();
+  });
+
+  it("tells a reader filtered to an empty role how to get back to everyone", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
+    listUsers.mockResolvedValue({ data: [MENTOR_DETAIL], error: undefined });
+    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
+
+    render(await StudentsPage({ searchParams: Promise.resolve({ show: "student" }) }));
+
+    expect(screen.getByText("No students yet.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Clear filter" })).toHaveAttribute("href", "/students");
+    // The Mentor that exists is filtered OUT, not just the empty state shown
+    // alongside a table that still renders it.
+    expect(screen.queryByText("Dev Mentor")).not.toBeInTheDocument();
+  });
+
+  it("narrows the table to one role via the filter chips", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    defaultReads();
+
+    render(await StudentsPage({ searchParams: Promise.resolve({ show: "mentor" }) }));
+
+    expect(screen.getByRole("link", { name: "Mentors" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("Dev Mentor")).toBeInTheDocument();
+    expect(screen.queryByText("Amaya Perera")).not.toBeInTheDocument();
   });
 
   it("renders the problem detail when a read errors -- must not silently fall through to an empty state", async () => {
@@ -204,10 +304,10 @@ describe("StudentsPage", () => {
     expect(listUsers).toHaveBeenCalledWith({ client: {}, query: { archived: true } });
     expect(screen.getByText("Kavindu Silva")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
-    // Restore is the only action here: everything else on the Students page
+    // Restore is the only action here: everything else on the Users page
     // (transfer, archive, registration) needs an ACTIVE user.
     expect(screen.getAllByRole("button")).toHaveLength(1);
-    expect(screen.getByRole("link", { name: /Back to Students/ })).toHaveAttribute("href", "/students");
+    expect(screen.getByRole("link", { name: /Back to Users/ })).toHaveAttribute("href", "/students");
   });
 
   it("restores an archived user through the SDK and surfaces a failure", async () => {

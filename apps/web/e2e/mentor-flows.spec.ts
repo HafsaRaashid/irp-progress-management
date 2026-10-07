@@ -265,10 +265,12 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await signInAsMentor(page);
     await page.goto("/students");
 
-    const chamodiListItem = page.locator("li").filter({ hasText: "Chamodi Herath" });
-    await expect(chamodiListItem).toBeVisible();
-    await chamodiListItem.getByRole("button", { name: "Archive" }).click();
-    await expect(page.locator("li").filter({ hasText: "Chamodi Herath" })).toHaveCount(0);
+    // The directory is a table row now (the mentor Users-page redesign,
+    // ADR-0034), not a bulleted <li> list.
+    const chamodiRow = page.locator("tr").filter({ hasText: "Chamodi Herath" });
+    await expect(chamodiRow).toBeVisible();
+    await chamodiRow.getByRole("button", { name: "Archive" }).click();
+    await expect(page.locator("tr").filter({ hasText: "Chamodi Herath" })).toHaveCount(0);
 
     await page.goto("/students?view=archived");
     await expect(page.getByText("Chamodi Herath")).toBeVisible();
@@ -285,10 +287,15 @@ test.describe("mentor flows (dev-admin-1)", () => {
     page,
   }) => {
     await signInAsMentor(page);
-    // Register moved to /settings (ADR-0022, Task 7) -- the People directory
-    // (the <li> list Archive lives on, checked below) stayed on /students,
-    // so this test now legitimately spans both pages.
-    await page.goto("/settings");
+    // Register came back to /students (ADR-0034, 2026-10-08, reversing
+    // ADR-0022) -- the directory it populates is the same page, as a table
+    // row now rather than a bulleted <li> list.
+    await page.goto("/students");
+
+    // Collapsed by default (spec D4) -- a real browser (unlike the jsdom unit
+    // tests) actually hides a closed <details>'s content, so the form must be
+    // opened before anything inside it is fillable.
+    await page.getByText("+ Add student").click();
 
     const stamp = String(Date.now());
     const email = `e2e.throwaway.${stamp}@dev.local`;
@@ -308,10 +315,9 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await page.getByRole("button", { name: "Register" }).click();
     await expect(page.getByText("Registered.")).toBeVisible();
 
-    // The People directory itself is on /students, not /settings -- confirm
-    // the new row landed there before checking the roster and archiving.
-    await page.goto("/students");
-    await expect(page.locator("li").filter({ hasText: displayName })).toBeVisible();
+    // Still on /students -- confirm the new row landed in the directory
+    // table before checking the roster and archiving.
+    await expect(page.locator("tr").filter({ hasText: displayName })).toBeVisible();
 
     await page.goto("/roster");
     await switchToBatch(page, SEED_BATCH_NAMES.B);
@@ -321,7 +327,7 @@ test.describe("mentor flows (dev-admin-1)", () => {
     // db:seed's idempotent wipe will never remove this row -- archive it in
     // this same test to keep the dev DB tidy, per the brief.
     await page.goto("/students");
-    await page.locator("li").filter({ hasText: displayName }).getByRole("button", { name: "Archive" }).click();
-    await expect(page.locator("li").filter({ hasText: displayName })).toHaveCount(0);
+    await page.locator("tr").filter({ hasText: displayName }).getByRole("button", { name: "Archive" }).click();
+    await expect(page.locator("tr").filter({ hasText: displayName })).toHaveCount(0);
   });
 });

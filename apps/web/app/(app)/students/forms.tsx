@@ -167,13 +167,29 @@ export function CreateBatchForm() {
   );
 }
 
-/** FR-8 transfer, ADR-0017's new-batch-owns-the-effective-date rule. */
+/**
+ * FR-8 transfer, ADR-0017's new-batch-owns-the-effective-date rule.
+ *
+ * `defaultStudentId` (2026-10-08, the mentor Users-page spec D5) pre-selects
+ * whichever row's "Transfer" link opened this shared form -- `defaultValue`
+ * on an uncontrolled `<select>`, so the form stays a plain `useActionState`
+ * form with no new client state of its own. An id that does not match any
+ * option (a stale link to an archived or since-transferred student) is not
+ * an error here: the browser falls back to the select's first option exactly
+ * as it would with no default at all.
+ */
 export function TransferForm({
   students,
   batches,
+  defaultStudentId,
 }: {
   students: StudentOption[];
   batches: BatchOption[];
+  // `| undefined`, not just `?:` -- exactOptionalPropertyTypes distinguishes
+  // "prop omitted" from "prop passed explicitly as undefined", and the
+  // caller passes `transferTarget?.id`, which is the latter whenever the
+  // query param is absent or stale.
+  defaultStudentId?: string | undefined;
 }) {
   const [state, action, pending] = useActionState(transferStudentAction, null);
 
@@ -181,7 +197,13 @@ export function TransferForm({
     <form action={action} className="flex flex-col gap-3">
       <label className="flex flex-col gap-1">
         <SectionLabel>Student</SectionLabel>
-        <select name="studentId" required aria-label="Student" className={FIELD_CLASS}>
+        <select
+          name="studentId"
+          required
+          aria-label="Student"
+          defaultValue={defaultStudentId}
+          className={FIELD_CLASS}
+        >
           {students.map((s) => (
             <option key={s.id} value={s.id}>{s.displayName} ({s.email})</option>
           ))}
