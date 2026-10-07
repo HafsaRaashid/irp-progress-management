@@ -160,6 +160,44 @@ describe("MyProgressPage", () => {
     expect(screen.getByText(/· Saved/)).toBeInTheDocument();
   });
 
+  it("shows the student their own reported meeting minutes, and nothing when they never set it (ADR-0033)", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+    apiClient.mockResolvedValue({});
+    getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+    listMyDays.mockResolvedValue({
+      data: [
+        {
+          date: "2026-07-31", status: "onTime", reportStatus: "Evaluated", reportId: "r1",
+          absenceReason: null,
+          mentorNote: null,
+          entries: [{
+            id: "e1", entryDate: "2026-07-31", body: "Entry with a meeting.",
+            submittedAt: "2026-07-31T11:30:00.000Z", isLate: false, isExtra: false,
+            meetingMinutes: 30,
+          }],
+        },
+        {
+          date: "2026-08-03", status: "late", reportStatus: "InReview", reportId: "r2",
+          absenceReason: null,
+          mentorNote: null,
+          entries: [{
+            id: "e2", entryDate: "2026-08-03", body: "Entry with no meeting reported.",
+            submittedAt: "2026-08-04T04:10:00.000Z", isLate: true, isExtra: false,
+            meetingMinutes: null,
+          }],
+        },
+      ],
+      error: undefined,
+    });
+
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("30 minutes in meetings")).toBeInTheDocument();
+    // Not a "0" or an "unreported" line on the other entry -- null and zero
+    // are deliberately distinct (ADR-0033), and this is the only match.
+    expect(screen.getAllByText(/minutes in meetings/)).toHaveLength(1);
+  });
+
   it("drops future days and quiet weekends from the history, but keeps a settled day even with no entry (Finding 4)", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
     apiClient.mockResolvedValue({});

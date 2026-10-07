@@ -222,6 +222,21 @@ export default async function StudentReviewPage({
                 {!entry.isLate && entry.isExtra && <StatusPill status="extra" />}
               </div>
             </div>
+            {/*
+              Supplementary, never scored (ADR-0033, FR-17) -- the same
+              muted, informational treatment as `Absent — {reason}` below.
+              Omitted entirely when null rather than shown as "not reported":
+              most entries never set this, and a line repeated on every
+              unreported entry would train a reader to skip past it.
+              `=== undefined` alongside `=== null`, matching MentorNote's own
+              defensive check -- a stale cached response or an older client
+              against a newer API should not crash this surface.
+            */}
+            {entry.meetingMinutes !== null && entry.meetingMinutes !== undefined && (
+              <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
+                {entry.meetingMinutes} minutes in meetings
+              </p>
+            )}
           </div>
         ))}
 

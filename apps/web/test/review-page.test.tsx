@@ -322,6 +322,54 @@ describe("StudentReviewPage", () => {
     expect(screen.queryByRole("button", { name: "Save record" })).not.toBeInTheDocument();
   });
 
+  it("shows an entry's meeting minutes when reported, and nothing when not (ADR-0033)", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
+    noStoredRecords();
+    listStudentDays.mockResolvedValue({
+      data: [
+        {
+          date: "2026-07-28",
+          status: "onTime",
+          reportStatus: "InReview",
+          reportId: "r-a",
+          absenceReason: null,
+          entries: [
+            {
+              id: "e1",
+              entryDate: "2026-07-28",
+              body: "Wrote the review page.",
+              submittedAt: "2026-07-28T04:00:00.000Z",
+              isLate: false,
+              isExtra: false,
+              meetingMinutes: 45,
+            },
+            {
+              id: "e2",
+              entryDate: "2026-07-28",
+              body: "Also fixed a flaky test.",
+              submittedAt: "2026-07-28T05:00:00.000Z",
+              isLate: false,
+              isExtra: false,
+              meetingMinutes: null,
+            },
+          ],
+        },
+      ],
+      error: undefined,
+    });
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
+
+    expect(screen.getByText("45 minutes in meetings")).toBeInTheDocument();
+    // Omitted entirely for the entry that never set it -- not a "0" or an
+    // "unreported" line, which would read as the student explicitly saying
+    // something they did not say (ADR-0033's null-vs-zero distinction). Only
+    // one match proves the second entry rendered no line at all.
+    expect(screen.getAllByText(/minutes in meetings/)).toHaveLength(1);
+  });
+
   function oneDay(date: string, reportStatus: "InReview" | "Evaluated" = "InReview") {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});

@@ -241,6 +241,19 @@ export default async function MyMonthPage({
                     <p data-testid="day-entry-body" className="prose" style={{ color: "var(--ink)" }}>
                       {entry.body}
                     </p>
+                    {/*
+                      ADR-0033: supplementary, self-reported, never scored.
+                      Omitted when null rather than shown as "not reported" --
+                      most entries never set this, so a line on every one of
+                      them would be noise to read past, not a signal.
+                      `=== undefined` alongside `=== null`, matching
+                      MentorNote's own defensive check just below.
+                    */}
+                    {entry.meetingMinutes !== null && entry.meetingMinutes !== undefined && (
+                      <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)" }}>
+                        {entry.meetingMinutes} minutes in meetings
+                      </p>
+                    )}
                   </div>
                 ))}
 
