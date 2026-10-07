@@ -40,7 +40,7 @@ export async function buildTestServer(
   const mentorRecordRepo = createMentorRecordRepo(prisma);
   const evaluationRepo = createEvaluationRepo(prisma);
   const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
-  const dashboardService = createDashboardService({ batchRepo, dayService });
+  const dashboardService = createDashboardService({ batchRepo, dayService, evaluationRepo });
   // No suite ever makes a real network call here — the AI provider ADR (O-5)
   // is still pending, so a fixed, fake result is the only thing any test is
   // allowed to depend on. Overridable per-suite, same pattern as

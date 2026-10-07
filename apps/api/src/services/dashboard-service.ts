@@ -5,7 +5,9 @@ import {
   type CivilDate, type CycleBounds, type DayStatus,
 } from "@irp/core";
 import type { BatchRecord, BatchRepo, RosterEnrolment } from "../db/batch-repo.js";
+import type { EvaluationRecord, EvaluationRepo, OverrideRecord } from "../db/evaluation-repo.js";
 import type { DayService, DayView } from "./day-service.js";
+import { toEvaluationView, type EvaluationView } from "./evaluation-service.js";
 import { BatchNotFoundError, InvalidCycleError } from "../domain/errors.js";
 
 export interface CycleView {
@@ -68,14 +70,16 @@ export interface StudentDashboardView {
   days: StudentDay[];
   extraAfter: CivilDate[];
   summary: CycleCounts;
-  /** Always null in this release — O-5 blocks the AI provider, so no Evaluation row exists (spec D2/D6). */
-  strengthsAndWeaknesses: null;
+  /** The student's current cycle's Evaluation summary, once one has been generated (FR-29); null until then. */
+  strengthsAndWeaknesses: string | null;
 }
 
 export interface StudentSummaryView {
   student: { id: string; displayName: string; email: string };
   counts: CycleCounts;
   reviewProgress: ReviewProgress;
+  /** This roster row's evaluation for the summarised cycle (FR-22/23), or null if none has been generated yet. */
+  evaluation: EvaluationView | null;
 }
 
 export interface BatchSummaryView {
@@ -239,6 +243,7 @@ export function extraSlots(
 export function createDashboardService(deps: {
   batchRepo: Pick<BatchRepo, "getBatch" | "enrolmentsInRange" | "firstEnrolmentStart" | "listEnrolments">;
   dayService: Pick<DayService, "listDaysForStudents">;
+  evaluationRepo: Pick<EvaluationRepo, "findEvaluation" | "findEvaluationsForBatchCycle" | "findOverridesForEvaluations">;
 }): DashboardService {
   /** The engine's cycle numbering for a batch (ADR-0019). Null before its first evaluated cycle. */
   function cycleView(bounds: CycleBounds, batch: BatchRecord): CycleView {
@@ -355,6 +360,15 @@ export function createDashboardService(deps: {
           if (intervals) intervals.push(e); else byStudentEnrolments.set(e.studentId, [e]);
         }
 
+        const evaluationsByStudent = new Map<string, EvaluationRecord>();
+        const overridesByEvaluationId = new Map<string, OverrideRecord>();
+        if (seq !== null) {
+          const evaluations = await deps.evaluationRepo.findEvaluationsForBatchCycle(batchId, seq);
+          for (const e of evaluations) evaluationsByStudent.set(e.studentId, e);
+          const overrides = await deps.evaluationRepo.findOverridesForEvaluations(evaluations.map((e) => e.id));
+          for (const o of overrides) overridesByEvaluationId.set(o.evaluationId, o);
+        }
+
         return {
           batch,
           cycle: { ...cycleView(bounds, batch), seq },
@@ -369,6 +383,12 @@ export function createDashboardService(deps: {
               student: { id: e.studentId, displayName: e.displayName, email: e.email },
               counts: countCycle(days, studentEnrolments),
               reviewProgress: countReviewProgress(days),
+              evaluation: evaluationsByStudent.has(e.studentId)
+                ? toEvaluationView(
+                    evaluationsByStudent.get(e.studentId)!,
+                    overridesByEvaluationId.get(evaluationsByStudent.get(e.studentId)!.id) ?? null,
+                  )
+                : null,
             };
           }),
         };
@@ -408,20 +428,39 @@ export function createDashboardService(deps: {
       const today = toProgrammeDate(now);
       const bounds = cycleContaining(today);
       const admission = await deps.batchRepo.firstEnrolmentStart(studentId);
+      // The programme clock runs from the student's FIRST enrolment, so a
+      // transfer never resets "Month N of 6" (spec §3, Enrolment). Hoisted to
+      // a local (rather than computed inline, as before) so the evaluation
+      // lookup below can reuse the exact same sequence instead of
+      // recomputing a second notion of "this student's current cycle".
+      const seq = admission === null ? null : (cycleFor(today, admission)?.index ?? null);
       const byStudent = await deps.dayService.listDaysForStudents(
         [studentId], bounds.start, bounds.end, now,
       );
       const days = byStudent.get(studentId) ?? [];
       const { extraAfter } = extraSlots([days], bounds.start);
+      const enrolments = await deps.batchRepo.listEnrolments(studentId);
+
+      // The evaluation (if any) for the student's own current cycle, in
+      // their CURRENT batch. A read, not a write: `findEvaluationsForBatchCycle`
+      // never materialises a Cycle row, so viewing this page cannot create
+      // one for a cycle nobody has evaluated yet.
+      let strengthsAndWeaknesses: string | null = null;
+      if (seq !== null) {
+        const currentEnrolment = enrolments.find((e) => covers(e, today));
+        if (currentEnrolment !== undefined) {
+          const evaluations = await deps.evaluationRepo.findEvaluationsForBatchCycle(currentEnrolment.batchId, seq);
+          const evaluation = evaluations.find((ev) => ev.studentId === studentId) ?? null;
+          strengthsAndWeaknesses = evaluation === null ? null : evaluation.summary;
+        }
+      }
 
       return {
         today,
         programmeMonths: PROGRAMME_MONTHS,
         firstEvaluatedCycleStart: admission === null ? null : firstEvaluatedCycleStart(admission),
         cycle: {
-          // The programme clock runs from the student's FIRST enrolment, so a
-          // transfer never resets "Month N of 6" (spec §3, Enrolment).
-          seq: admission === null ? null : (cycleFor(today, admission)?.index ?? null),
+          seq,
           startDate: bounds.start,
           endDate: bounds.end,
           requiredDayCount: cycleWorkingDays(bounds).length,
@@ -439,8 +478,8 @@ export function createDashboardService(deps: {
         // `{ startDate: CivilDate; endDate: CivilDate | null }` so both
         // `RosterEnrolment` and `EnrolmentRecord` satisfy it; do not duplicate
         // the counter.
-        summary: countCycle(days, await deps.batchRepo.listEnrolments(studentId)),
-        strengthsAndWeaknesses: null,
+        summary: countCycle(days, enrolments),
+        strengthsAndWeaknesses,
       };
     },
   };

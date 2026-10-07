@@ -39,8 +39,8 @@ await bootstrap({
     const mentorRecordRepo = createMentorRecordRepo(prisma);
     const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
     const rosterService = createRosterService({ batchRepo, dayService, mentorRecordRepo });
-    const dashboardService = createDashboardService({ batchRepo, dayService });
     const evaluationRepo = createEvaluationRepo(prisma);
+    const dashboardService = createDashboardService({ batchRepo, dayService, evaluationRepo });
     const aiClient = createAzureOpenAiEvaluator(config.azureOpenAi, fetch);
     const evaluationService = createEvaluationService({
       batchRepo, entryRepo, mentorRecordRepo, absenceRepo, evaluationRepo, aiClient, userRepo,

@@ -51,6 +51,15 @@ export interface EvaluationRepo {
   createOverride(input: {
     evaluationId: string; mentorId: string; newScore: number; originalScore: number; reason: string;
   }): Promise<OverrideRecord>;
+  /**
+   * Batched roster read for one batch/cycle — DashboardService.batchSummary's per-student
+   * `evaluation` field (matches the existing no-per-student-fan-out convention already used by
+   * `enrolmentsInRange`/`listDaysForStudents`). Empty array when the Cycle row was never
+   * materialised (nothing generated yet this cycle) — this is a read, it never calls upsertCycle.
+   */
+  findEvaluationsForBatchCycle(batchId: string, seq: number): Promise<EvaluationRecord[]>;
+  /** Batched override lookup paired with findEvaluationsForBatchCycle — one query for the whole roster, not one findOverride call per row. */
+  findOverridesForEvaluations(evaluationIds: string[]): Promise<OverrideRecord[]>;
 }
 
 function mapEvaluation(e: {
@@ -107,6 +116,17 @@ export function createEvaluationRepo(prisma: PrismaClient): EvaluationRepo {
     async createOverride(input) {
       const o = await prisma.override.create({ data: input });
       return mapOverride(o);
+    },
+
+    async findEvaluationsForBatchCycle(batchId, seq) {
+      const rows = await prisma.evaluation.findMany({ where: { cycle: { batchId, seq } }, ...WITH_CYCLE_SEQ });
+      return rows.map(mapEvaluation);
+    },
+
+    async findOverridesForEvaluations(evaluationIds) {
+      if (evaluationIds.length === 0) return [];
+      const rows = await prisma.override.findMany({ where: { evaluationId: { in: evaluationIds } } });
+      return rows.map(mapOverride);
     },
   };
 }

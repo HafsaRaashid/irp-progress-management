@@ -4,6 +4,7 @@ import { createPrismaClient } from "../src/db/client.js";
 import { createEntryRepo } from "../src/db/entry-repo.js";
 import { createAbsenceRepo } from "../src/db/absence-repo.js";
 import { createBatchRepo } from "../src/db/batch-repo.js";
+import { createEvaluationRepo } from "../src/db/evaluation-repo.js";
 import { colomboInstant } from "../src/db/civil-date-map.js";
 import { createDayService } from "../src/services/day-service.js";
 import { createDashboardService } from "../src/services/dashboard-service.js";
@@ -38,7 +39,8 @@ describe.skipIf(!dbUrl)("createDashboardService — batchToday", () => {
   const absenceRepo = createAbsenceRepo(prisma);
   const batchRepo = createBatchRepo(prisma);
   const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
-  const dashboards = createDashboardService({ batchRepo, dayService });
+  const evaluationRepo = createEvaluationRepo(prisma);
+  const dashboards = createDashboardService({ batchRepo, dayService, evaluationRepo });
 
   beforeEach(async () => {
     await resetDb(prisma);
@@ -258,7 +260,8 @@ describe.skipIf(!dbUrl)("createDashboardService — batchSummary", () => {
   const absenceRepo = createAbsenceRepo(prisma);
   const batchRepo = createBatchRepo(prisma);
   const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
-  const dashboards = createDashboardService({ batchRepo, dayService });
+  const evaluationRepo = createEvaluationRepo(prisma);
+  const dashboards = createDashboardService({ batchRepo, dayService, evaluationRepo });
 
   beforeEach(async () => {
     await resetDb(prisma);
@@ -511,6 +514,65 @@ describe.skipIf(!dbUrl)("createDashboardService — batchSummary", () => {
     await expect(dashboards.batchSummary("00000000-0000-0000-0000-000000000000", undefined, NOW))
       .rejects.toBeInstanceOf(BatchNotFoundError);
   });
+
+  it("surfaces each student's evaluation (with override, when one exists) for an evaluated cycle, and null for a student with none", async () => {
+    const batch = await batchRepo.create({
+      name: "Batch Eval Roster", startDate: CYCLE_START, endDate: civilDate("2027-01-09"),
+    });
+    const studentA = await prisma.user.create({
+      data: { externalId: "sum-eval-a", email: "sum-eval-a@dev.local", displayName: "Eval A", role: "STUDENT" },
+    });
+    const studentB = await prisma.user.create({
+      data: { externalId: "sum-eval-b", email: "sum-eval-b@dev.local", displayName: "Eval B", role: "STUDENT" },
+    });
+    await batchRepo.enrol(studentA.id, batch.id, CYCLE_START);
+    await batchRepo.enrol(studentB.id, batch.id, CYCLE_START);
+
+    // NOW (2026-08-05) falls inside CYCLE_START's own cycle (2026-07-10 ..
+    // 2026-08-09), which — admission landing exactly on the batch's own
+    // start — is this batch's 1st evaluated cycle (same reasoning as the
+    // "splits one student's cycle" test above, where the same fixture
+    // resolves view.cycle.startDate to CYCLE_START).
+    const cycleId = await evaluationRepo.upsertCycle(batch.id, 1, {
+      start: CYCLE_START, end: civilDate("2026-08-09"),
+    });
+    const evaluation = await evaluationRepo.createEvaluation({
+      cycleId, studentId: studentA.id, attendance: 80, taskCompletion: 90,
+      contributionInitiative: 70, effortTime: 60, mentorEvaluation: 85,
+      performanceIndex: 79.5, summary: "Solid month.", modelVersion: "v1",
+    });
+    const override = await evaluationRepo.createOverride({
+      evaluationId: evaluation.id, mentorId: studentA.id, newScore: 90,
+      originalScore: 79.5, reason: "Strong finish.",
+    });
+
+    const view = await dashboards.batchSummary(batch.id, undefined, NOW);
+    const rowA = view.students.find((r) => r.student.id === studentA.id)!;
+    const rowB = view.students.find((r) => r.student.id === studentB.id)!;
+
+    expect(rowA.evaluation).not.toBeNull();
+    expect(rowA.evaluation!.id).toBe(evaluation.id);
+    expect(rowA.evaluation!.override).toMatchObject({ newScore: 90, originalScore: 79.5, reason: "Strong finish." });
+    expect(rowB.evaluation).toBeNull();
+    // Sanity: the override really was persisted, not merely absent from rowB.
+    expect(override.reason).toBe("Strong finish.");
+  });
+
+  it("returns evaluation: null for every student when the batch has no evaluated cycle yet", async () => {
+    const batch = await batchRepo.create({
+      name: "Batch Eval No Cycle", startDate: BATCH_OFF_TENTH_START, endDate: civilDate("2027-05-09"),
+    });
+    const s = await prisma.user.create({
+      data: { externalId: "sum-eval-none", email: "sum-eval-none@dev.local", displayName: "No Eval", role: "STUDENT" },
+    });
+    await batchRepo.enrol(s.id, batch.id, BATCH_OFF_TENTH_START);
+
+    const view = await dashboards.batchSummary(batch.id, undefined, BEFORE_FIRST_CYCLE);
+
+    expect(view.cycle.seq).toBeNull();
+    const row = view.students.find((r) => r.student.id === s.id)!;
+    expect(row.evaluation).toBeNull();
+  });
 });
 
 describe.skipIf(!dbUrl)("createDashboardService — studentDashboard", () => {
@@ -519,7 +581,8 @@ describe.skipIf(!dbUrl)("createDashboardService — studentDashboard", () => {
   const absenceRepo = createAbsenceRepo(prisma);
   const batchRepo = createBatchRepo(prisma);
   const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
-  const dashboards = createDashboardService({ batchRepo, dayService });
+  const evaluationRepo = createEvaluationRepo(prisma);
+  const dashboards = createDashboardService({ batchRepo, dayService, evaluationRepo });
 
   beforeEach(async () => {
     await resetDb(prisma);
@@ -625,5 +688,48 @@ describe.skipIf(!dbUrl)("createDashboardService — studentDashboard", () => {
     expect(view.cycle.seq).toBeNull();
     expect(view.summary.requiredDays).toBe(0);
     expect(view.summary.complianceRate).toBeNull();
+  });
+
+  it("surfaces the latest evaluation's summary once one exists for the student's current cycle", async () => {
+    const batch = await batchRepo.create({
+      name: "Batch Own Eval", startDate: CYCLE_START, endDate: civilDate("2027-01-09"),
+    });
+    const s = await prisma.user.create({
+      data: { externalId: "own-eval", email: "own-eval@dev.local", displayName: "Eval Owner", role: "STUDENT" },
+    });
+    await batchRepo.enrol(s.id, batch.id, CYCLE_START);
+
+    // NOW (2026-08-05) falls inside CYCLE_START's own cycle, which — admission
+    // landing exactly on CYCLE_START — is this student's 1st cycle (same
+    // reasoning as "reports Month N of 6" above, where cycle.seq is derived
+    // from cycleFor(today, admission)).
+    const cycleId = await evaluationRepo.upsertCycle(batch.id, 1, {
+      start: CYCLE_START, end: civilDate("2026-08-09"),
+    });
+    await evaluationRepo.createEvaluation({
+      cycleId, studentId: s.id, attendance: 80, taskCompletion: 90,
+      contributionInitiative: 70, effortTime: 60, mentorEvaluation: 85,
+      performanceIndex: 79.5, summary: "Clear strengths, keep up the momentum.", modelVersion: "v1",
+    });
+
+    const view = await dashboards.studentDashboard(s.id, NOW);
+
+    expect(view.cycle.seq).toBe(1);
+    expect(view.strengthsAndWeaknesses).toBe("Clear strengths, keep up the momentum.");
+  });
+
+  it("stays null when no evaluation exists yet for the student's current cycle", async () => {
+    const batch = await batchRepo.create({
+      name: "Batch Own No Eval", startDate: CYCLE_START, endDate: civilDate("2027-01-09"),
+    });
+    const s = await prisma.user.create({
+      data: { externalId: "own-no-eval", email: "own-no-eval@dev.local", displayName: "No Eval", role: "STUDENT" },
+    });
+    await batchRepo.enrol(s.id, batch.id, CYCLE_START);
+
+    const view = await dashboards.studentDashboard(s.id, NOW);
+
+    expect(view.cycle.seq).toBe(1);
+    expect(view.strengthsAndWeaknesses).toBeNull();
   });
 });

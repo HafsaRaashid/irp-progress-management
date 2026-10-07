@@ -3,7 +3,7 @@ import type { BatchRepo } from "../db/batch-repo.js";
 import type { EntryRepo } from "../db/entry-repo.js";
 import type { MentorRecordRepo } from "../db/mentor-record-repo.js";
 import type { AbsenceRepo } from "../db/absence-repo.js";
-import type { EvaluationRecord, EvaluationRepo } from "../db/evaluation-repo.js";
+import type { EvaluationRecord, EvaluationRepo, OverrideRecord } from "../db/evaluation-repo.js";
 import type { UserRepo } from "../db/user-repo.js";
 import type { EvaluationAiClient } from "./evaluation-ai-client.js";
 import {
@@ -55,25 +55,34 @@ function resolveBounds(batchStartDate: CycleBounds["start"], seq: number): Cycle
   return cycleContaining(shiftCycle(first, seq - 1));
 }
 
+/**
+ * The pure EvaluationRecord + OverrideRecord|null -> EvaluationView mapping,
+ * extracted (Task 8) so DashboardService.batchSummary can reuse it against a
+ * BATCHED override lookup instead of one `findOverride` call per roster row.
+ */
+export function toEvaluationView(evalRow: EvaluationRecord, override: OverrideRecord | null): EvaluationView {
+  return {
+    id: evalRow.id,
+    studentId: evalRow.studentId,
+    cycleSeq: evalRow.cycleSeq,
+    attendance: evalRow.attendance,
+    taskCompletion: evalRow.taskCompletion,
+    contributionInitiative: evalRow.contributionInitiative,
+    effortTime: evalRow.effortTime,
+    mentorEvaluation: evalRow.mentorEvaluation,
+    performanceIndex: Number(evalRow.performanceIndex),
+    summary: evalRow.summary,
+    modelVersion: evalRow.modelVersion,
+    override: override === null ? null : {
+      newScore: Number(override.newScore), originalScore: Number(override.originalScore), reason: override.reason,
+    },
+  };
+}
+
 export function createEvaluationService(deps: EvaluationServiceDeps): EvaluationService {
   async function toView(evalRow: EvaluationRecord): Promise<EvaluationView> {
     const override = await deps.evaluationRepo.findOverride(evalRow.id);
-    return {
-      id: evalRow.id,
-      studentId: evalRow.studentId,
-      cycleSeq: evalRow.cycleSeq,
-      attendance: evalRow.attendance,
-      taskCompletion: evalRow.taskCompletion,
-      contributionInitiative: evalRow.contributionInitiative,
-      effortTime: evalRow.effortTime,
-      mentorEvaluation: evalRow.mentorEvaluation,
-      performanceIndex: Number(evalRow.performanceIndex),
-      summary: evalRow.summary,
-      modelVersion: evalRow.modelVersion,
-      override: override === null ? null : {
-        newScore: Number(override.newScore), originalScore: Number(override.originalScore), reason: override.reason,
-      },
-    };
+    return toEvaluationView(evalRow, override);
   }
 
   return {

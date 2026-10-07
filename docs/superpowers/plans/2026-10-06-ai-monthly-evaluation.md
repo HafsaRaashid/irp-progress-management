@@ -2358,7 +2358,7 @@ way to exercise this path before merge, mirroring NFR-15's own manual-gate treat
 - [ ] **Step 19: Commit**
 
 ```bash
-git add apps/api/src/db/evaluation-repo.ts apps/api/test/evaluation-repo.test.ts apps/api/src/services/evaluation-service.ts apps/api/src/services/dashboard-service.ts apps/api/test/dashboard-service.test.ts apps/api/src/routes/dashboards.ts apps/api/src/index.ts apps/web/e2e/
+git add apps/api/src/db/evaluation-repo.ts apps/api/test/evaluation-repo.test.ts apps/api/src/services/evaluation-service.ts apps/api/src/services/dashboard-service.ts apps/api/test/dashboard-service.test.ts apps/api/src/routes/dashboards.ts apps/api/src/index.ts apps/api/test/helpers/build-test-server.ts apps/web/e2e/
 git commit -m "feat(api): surface real evaluation data on both dashboard reads (FR-22, FR-29)"
 ```
 
