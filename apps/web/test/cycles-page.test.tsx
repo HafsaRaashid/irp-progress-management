@@ -37,6 +37,7 @@ const summary = (over: Record<string, unknown> = {}) => ({
         missed: 1, pending: 1, extra: 2, complianceRate: 0.9412,
       },
       reviewProgress: { submitted: 4, inReview: 3, evaluated: 10 },
+      evaluation: null,
     },
   ],
   ...over,
@@ -87,6 +88,7 @@ describe("CyclesPage", () => {
             missed: 0, pending: 0, extra: 0, complianceRate: null,
           },
           reviewProgress: { submitted: 0, inReview: 0, evaluated: 0 },
+          evaluation: null,
         }],
       }),
       error: undefined,
@@ -98,15 +100,71 @@ describe("CyclesPage", () => {
     expect(screen.queryByText("0%")).not.toBeInTheDocument();
   });
 
-  it("shows the awaiting-evaluation state for every student — no scores exist in this release", async () => {
+  it("offers an Evaluate action once the cycle has closed and no evaluation exists yet", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH] });
+    // The default summary()'s cycle (2026-07-10 -- 2026-08-09) has already
+    // closed as of any plausible test-run clock, so an ungenerated
+    // evaluation renders the Evaluate action rather than "Awaiting
+    // evaluation" (FR-22/27: generateEvaluation refuses an open cycle).
     getBatchDashboardSummary.mockResolvedValue({ data: summary(), error: undefined });
 
     render(await CyclesPage({ searchParams: Promise.resolve({ batchId: "b1" }) }));
 
+    expect(
+      screen.getByTestId("evaluation-s1").querySelector("button"),
+    ).toHaveTextContent("Evaluate");
+  });
+
+  it("shows 'Awaiting evaluation' with no action while the cycle is still open", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN);
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH] });
+    getBatchDashboardSummary.mockResolvedValue({
+      data: summary({
+        // Far enough in the future that no real test run ever observes it
+        // as closed.
+        cycle: { seq: 3, startDate: "2099-07-10", endDate: "2099-08-09", requiredDayCount: 22 },
+      }),
+      error: undefined,
+    });
+
+    render(await CyclesPage({ searchParams: Promise.resolve({ batchId: "b1" }) }));
+
     expect(screen.getByTestId("evaluation-s1")).toHaveTextContent(/awaiting evaluation/i);
+    expect(screen.getByTestId("evaluation-s1").querySelector("button")).not.toBeInTheDocument();
+  });
+
+  it("shows the AI score and an Override action once a cycle has been evaluated", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN);
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH] });
+    getBatchDashboardSummary.mockResolvedValue({
+      data: summary({
+        students: [{
+          student: { id: "s1", displayName: "Amaya Wickramasinghe", email: "amaya@dev.local" },
+          counts: {
+            requiredDays: 22, settledDays: 17, onTime: 13, late: 2, absent: 1,
+            missed: 1, pending: 1, extra: 2, complianceRate: 0.9412,
+          },
+          reviewProgress: { submitted: 4, inReview: 3, evaluated: 10 },
+          evaluation: {
+            id: "eval-1", studentId: "s1", cycleSeq: 3, attendance: 80, taskCompletion: 90,
+            contributionInitiative: 70, effortTime: 60, mentorEvaluation: 85, performanceIndex: 79,
+            summary: "Solid month.", modelVersion: "gpt-4o-mini-2024-10-21", override: null,
+          },
+        }],
+      }),
+      error: undefined,
+    });
+
+    render(await CyclesPage({ searchParams: Promise.resolve({ batchId: "b1" }) }));
+
+    expect(screen.getByTestId("evaluation-s1")).toHaveTextContent("79");
+    expect(
+      screen.getByTestId("evaluation-s1").querySelector("button"),
+    ).toHaveTextContent("Override");
   });
 
   it("offers a cycle picker back to cycle 1 and carries the batch forward", async () => {

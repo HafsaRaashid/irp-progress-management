@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { civilDate, compareDates, toProgrammeDate } from "@irp/core";
 import { listBatches, getBatchDashboardSummary } from "@irp/client";
 import { getCurrentUserOrRedirect, apiClient } from "@/lib/api-client";
 import { PageTitle } from "@/components/ui/page-title";
@@ -8,16 +9,17 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { CountsRow } from "@/components/ui/counts-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, Th, Td } from "@/components/ui/table";
+import { EvaluationCell } from "@/components/evaluation/evaluation-cell";
 import { formatCivilDateLabel } from "../format-civil-date";
 
 /**
  * The mentor's per-cycle view (spec §5). Admin-only; a Student is bounced to
  * "/" rather than shown a 403 page, matching Roster and Review.
  *
- * There is no evaluation column data to fetch: no Evaluation row exists in
- * this release (O-5 blocks the AI provider decision), so the column renders
- * the designed awaiting state for every student rather than the API
- * returning a field that is always null.
+ * The Evaluation column is driven by each row's own
+ * `StudentCycleSummary.evaluation` (FR-22/23/24) -- EvaluationCell renders
+ * the Evaluate action, the AI score, or the override form from that field
+ * directly; there is no separate fetch here.
  */
 export default async function CyclesPage({
   searchParams,
@@ -71,6 +73,18 @@ export default async function CyclesPage({
     path: { id: selected.id },
     query: cycle === undefined ? {} : { cycle },
   });
+
+  // Whether the rendered cycle has closed (its end date has passed) --
+  // generateEvaluation (FR-22/27) refuses an open cycle with a 409, so the
+  // Evaluate action is only ever offered once this is true. `data.cycle.seq`
+  // is null only when the batch's first evaluated cycle hasn't opened yet
+  // (ADR-0019), in which case `data.students` is empty and this value is
+  // never consulted, but it's computed with the same guard as the Td below
+  // rather than assumed.
+  const cycleIsClosed =
+    data !== undefined &&
+    data.cycle.seq !== null &&
+    compareDates(civilDate(data.cycle.endDate), toProgrammeDate(new Date())) < 0;
 
   return (
     <div>
@@ -159,7 +173,7 @@ export default async function CyclesPage({
                 </tr>
               </thead>
               <tbody>
-                {data.students.map(({ student, counts, reviewProgress }) => (
+                {data.students.map(({ student, counts, reviewProgress, evaluation }) => (
                   <tr key={student.id} style={{ borderTop: "1px solid var(--line)" }}>
                     <Td>
                       <div>{student.displayName}</div>
@@ -201,8 +215,21 @@ export default async function CyclesPage({
                         {reviewProgress.evaluated} evaluated · {reviewProgress.inReview} to review
                       </span>
                     </Td>
-                    <Td data-testid={`evaluation-${student.id}`} style={{ color: "var(--ink-muted)" }}>
-                      Awaiting evaluation
+                    <Td data-testid={`evaluation-${student.id}`}>
+                      {/* data.cycle.seq is independently nullable -- a batch
+                          whose first evaluated cycle hasn't opened yet -- even
+                          though this branch only renders once `data` exists.
+                          There is no cycle to evaluate in that case, matching
+                          the `data.cycle.seq === null` branch already handled
+                          for the Panel title above. */}
+                      {data.cycle.seq === null ? null : (
+                        <EvaluationCell
+                          studentId={student.id}
+                          cycleSeq={data.cycle.seq}
+                          evaluation={evaluation}
+                          cycleIsClosed={cycleIsClosed}
+                        />
+                      )}
                     </Td>
                   </tr>
                 ))}
