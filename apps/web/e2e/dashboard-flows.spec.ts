@@ -110,7 +110,10 @@ test.describe("student home (FR-29, FR-30, design-system §8.2)", () => {
     ).toBeVisible();
     const figure = page.getByRole("figure");
     await expect(figure).toBeVisible();
-    await expect(figure.locator("figcaption")).toHaveText(/Month \d of 6/);
+    // "Month X of 6" lives in the greeting band's journey bar, not the
+    // ribbon's own caption — the ribbon's figcaption is the cycle's date
+    // range instead (§8.2 restructure moved the two apart).
+    await expect(page.getByText(/Month \d of 6/)).toBeVisible();
     await expect(page.getByText(/No evaluation yet/)).toHaveCount(0);
     await expect(page.getByLabel("Entry text")).toBeVisible();
     // The streak chip: the student's own count, no window named, nothing
