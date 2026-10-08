@@ -80,6 +80,12 @@ export function RegisterForm({ batches }: { batches: BatchOption[] }) {
         person's email and NOT the User row's own id -- and getting it wrong
         produces a row that simply 403s forever at sign-in rather than any
         visible error at registration time.
+
+        This hint is the INTERIM mitigation, not the fix: **O-22** proposes
+        registering by email and binding the real `oid` on first sign-in, so
+        nobody transcribes a GUID at all. That needs a migration (externalId
+        is non-nullable), an auth-path change and an ADR, and belongs with
+        the Entra cutover.
       */}
       <label className="flex flex-col gap-1">
         <SectionLabel>External id</SectionLabel>
