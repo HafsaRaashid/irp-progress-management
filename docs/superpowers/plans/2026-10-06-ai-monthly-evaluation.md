@@ -2440,12 +2440,13 @@ do) and easy to swap if ADR-0031 is later reversed.
 
 - [ ] **Step 3: Update O-5's row in `docs/interview-and-prd.md`**
 
-Change its third column from "ADR + escalation... before implementation" to something recording
-that the technical half shipped ahead of that process — mirror O-18's own "DECIDED"/reversal
-language style, but for an override rather than a reversal:
+Change its third and fourth columns ("Current assumption" and "Needs" — the fourth previously read
+"ADR + escalation... before implementation") to something recording that the technical half
+shipped ahead of that process — mirror O-18's own "DECIDED"/reversal language style, but for an
+override rather than a reversal:
 
 ```markdown
-| O-5 | AI provider and data-processing terms | Undecided — no leadership sign-off exists. Azure OpenAI is now wired up regardless, on the spec lead's explicit instruction ([ADR-0031](adr/0031-azure-openai-for-ai-evaluation-o-5-override.md)) | **Leadership escalation still outstanding.** If the eventual answer differs from Azure OpenAI, ADR-0031 is superseded and the provider swap is contained to `evaluation-ai-client.ts` per its own §9/Consequences |
+| O-5 | AI provider and data-processing terms | Undecided — no leadership sign-off exists. Azure OpenAI is now wired up regardless, on the spec lead's explicit instruction ([ADR-0031](adr/0031-azure-openai-for-ai-evaluation-o-5-override.md)) | **Leadership escalation still outstanding.** If the eventual answer differs from Azure OpenAI, ADR-0031 is superseded and the provider swap is contained to `evaluation-ai-client.ts` per its own Consequences section |
 ```
 
 - [ ] **Step 4: `handoff.md` entry**

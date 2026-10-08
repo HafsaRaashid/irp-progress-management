@@ -35,6 +35,57 @@ Copies of the PRD, the interview record, and the brief also sit directly under t
 
 ## 1. State of play
 
+### 2026-10-08 — AI monthly evaluation shipped (FR-22-27), O-5 overridden technically, two gaps left open
+
+**What shipped.** The three evaluation endpoints (`POST /api/v1/students/{id}/evaluations` to
+generate, `GET /api/v1/students/{id}/evaluations/{cycle}` to read, `PUT
+/api/v1/evaluations/{id}/override` for a mentor override), wired into the server
+(`apps/api/src/routes/evaluations.ts`); the Cycles page's new Evaluate/Override actions
+(`apps/web/app/(app)/cycles/`); and real evaluation data surfaced on both dashboard reads (the
+per-student batch summary and the individual student view), replacing the `evaluation: null`
+placeholder. Rubric scoring is five AI-produced 0-100 criteria combined into a `performanceIndex`
+by this codebase's own fixed weighting (20/25/25/10/20) — the AI never produces the number of
+record unchecked.
+
+**O-5 overridden, technically only.** `CLAUDE.md` requires an ADR and leadership escalation before
+any AI provider is wired up; `docs/interview-and-prd.md` still lists O-5 as Undecided. This slice
+proceeds anyway, on the spec lead's explicit instruction, who accepts the risk — see
+`docs/superpowers/specs/2026-10-06-ai-monthly-evaluation-design.md` §0. Azure OpenAI is the
+provider, called via a hand-written `fetch` client rather than the `openai` SDK, matching this
+repo's established pattern for external services (ADR-0024 Teams webhook, ADR-0025 SMTP).
+Recorded in [ADR-0031](adr/0031-azure-openai-for-ai-evaluation-o-5-override.md) (the provider
+choice) and [ADR-0032](adr/0032-hand-written-azure-openai-client-over-sdk.md) (the client shape),
+and in O-5's own row in `docs/interview-and-prd.md` §5. **The override covers the technical
+build only — the leadership/data-processing sign-off itself remains outstanding** and is not what
+this entry closes.
+
+**Quarterly-vs-monthly ambiguity, flagged for the requester, not resolved here.** The design
+spec's §0 notes the brief (§6.2) describes a separate, independent "Quarterly (3-Month) Major
+Evaluation" that is explicitly *not* derived from the monthly winners — and that a 6-month
+programme's two quarters land on month 3 ("halfway through the program") and month 6 ("at the
+end"), which plausibly matches the originating request's wording better than reading it as "the
+ordinary monthly mechanism happening to run on those two months" (the reading this slice
+proceeds on). `CLAUDE.md` lists the quarterly evaluation under "Deferred to v2." This slice builds
+only the monthly mechanism (FR-22-27). If the requester confirms quarterly evaluation is genuinely
+wanted, that needs its own schema and its own follow-on spec — it cannot simply read this slice's
+output.
+
+**Two things left incomplete in this environment, not silently skipped:**
+
+1. **The e2e test for the evaluation flows cannot be run meaningfully here.**
+   `apps/web/e2e/evaluation-flows.spec.ts` gets a real `503` back from the generate endpoint
+   because this environment has no `AZURE_OPENAI_ENDPOINT`/`AZURE_OPENAI_API_KEY`/
+   `AZURE_OPENAI_DEPLOYMENT` configured — confirmed again as of this entry: `apps/api/.env` has
+   zero `AZURE_OPENAI_*` entries. This is an environment limitation, not a code defect; the fake
+   client covers the unit/integration layer.
+2. **Task 10 (NFR-15 determinism verification) is explicitly left incomplete, not skipped.** It
+   needs a real Azure OpenAI deployment to generate the same evaluation several times and confirm
+   the five `performanceIndex` runs stay within a 2-point spread (temperature 0 alone is not
+   proof). It cannot run without real credentials, which this session does not have. **A future
+   session with real Azure OpenAI credentials must run Task 10 before this slice can be
+   considered fully verified** — do not treat the unit/integration test suite passing as having
+   satisfied NFR-15.
+
 ### 2026-09-28 — FR-20's lock was never enforced for the mentor's own record
 
 **A finished day could still be rewritten through the API.** `entry-repo.addEntry` and the absence
