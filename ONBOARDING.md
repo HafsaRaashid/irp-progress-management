@@ -139,6 +139,24 @@ both run with every one of these blank. See ADR-0024 (Teams webhook) and
 ADR-0025 (SMTP via M365) for why those two delivery mechanisms were chosen,
 and the Plan 8 design spec for the full notification behaviour.
 
+**`apps/api/.env`'s four AI evaluation variables (FR-22-27) are also optional
+— leave every one of them blank for local dev:**
+
+```
+AZURE_OPENAI_ENDPOINT=
+AZURE_OPENAI_API_KEY=
+AZURE_OPENAI_DEPLOYMENT=
+AZURE_OPENAI_API_VERSION=
+```
+
+The first three are all-or-nothing, same principle as the SMTP block: leaving
+any of `ENDPOINT`/`API_KEY`/`DEPLOYMENT` unset leaves the AI provider
+unconfigured and evaluation generation returns a 503, rather than failing to
+boot. `AZURE_OPENAI_API_VERSION` is independently optional and defaults to
+`2024-10-21` when unset. `pnpm dev` and CI both run with all four blank. See
+ADR-0031 (Azure OpenAI as provider — an O-5 override) and ADR-0032
+(hand-written client over the SDK).
+
 ## 5. Start Postgres and migrate
 
 ```powershell

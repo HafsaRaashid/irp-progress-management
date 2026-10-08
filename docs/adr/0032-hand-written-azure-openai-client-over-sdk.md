@@ -18,6 +18,12 @@ config and (here) an injectable `fetch`, tested against a fake with no real netw
    kind of integration (ADR-0024/0025 precedent), for an API surface (one chat-completions POST)
    simple enough that the SDK buys little beyond typed request/response shapes this codebase
    already types itself via the OpenAPI-generated `Evaluation` schema.
+2. **Azure's dedicated `@azure/openai` SDK package.** A separate Azure-specific client package
+   exists on npm, but it is stale (no release in roughly two years) — Microsoft's own current
+   guidance directs new Azure OpenAI integrations to the `AzureOpenAI` class inside the `openai`
+   package itself, not this package. Choosing it would mean depending on an effectively
+   unmaintained library for the same single-endpoint call alternative 1 already rejects, with no
+   offsetting benefit over a hand-written `fetch`.
 
 ## Consequences
 The client is easy to test (inject a fake `fetch`, exactly like the Teams/SMTP senders already
