@@ -19,8 +19,26 @@ vi.mock("@/lib/api-client", () => ({ getCurrentUserOrRedirect, apiClient }));
 // whole tree runs without a real client or network access. createUser and
 // createBatch are both exercised directly: RegisterForm and CreateBatchForm
 // round-tripped Settings (ADR-0022) and back (ADR-0023 for Create batch,
-// ADR-0034 for Register) and render on this page again, inside the Add
-// student / Create batch disclosures.
+// ADR-0034 for Register) and render on this page again, inside the Register /
+// Create batch dialogs (2026-10-09 revision: Dialog-wrapped buttons, not
+// collapsed <details>).
+
+/**
+ * jsdom ships `dialog:not([open]) { display: none; }` in its default
+ * stylesheet (a real UA default, not a jsdom quirk), but its
+ * HTMLDialogElement implementation is an empty stub -- `showModal()` does
+ * nothing, so a real click on a Dialog trigger never flips the `open`
+ * attribute the way a real browser does. Setting it directly here
+ * reproduces exactly what `showModal()` would have done, and is the only
+ * way these dialogs' contents become queryable in this environment --
+ * verified against the real browser separately in Playwright, where
+ * `showModal()` is fully implemented.
+ */
+function openDialog(ariaLabel: string) {
+  const dialog = document.querySelector(`dialog[aria-label="${ariaLabel}"]`);
+  if (dialog === null) throw new Error(`No <dialog aria-label="${ariaLabel}"> found`);
+  dialog.setAttribute("open", "");
+}
 const {
   listBatches,
   listUsers,
@@ -159,6 +177,7 @@ describe("StudentsPage", () => {
     createUser.mockResolvedValue({ error: undefined, data: { id: "m2" } });
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
+    openDialog("Register");
 
     // Student is the default role -- assert batch/start date are actually
     // PRESENT first. Checking only the post-change Admin state would also
@@ -184,30 +203,23 @@ describe("StudentsPage", () => {
     expect(callArgs?.body).not.toHaveProperty("enrolment");
   });
 
-  it("keeps Transfer and the directory table, which are the management half", async () => {
+  it("keeps Transfer (per-row) and the directory table, which are the management half", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
-    listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
-    listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
-    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
+    defaultReads();
 
+    // Default view (no `show`) is Students -- Dev Mentor is not expected here.
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
 
-    // getAllByText, not getByText: TransferForm's own submit button and each
-    // row's per-student Transfer link are also text "Transfer" (forms.tsx,
-    // page.tsx), so a plain single match throws.
-    expect(screen.getAllByText("Transfer").length).toBeGreaterThan(0);
-    // The directory lists both roles read back — a student and a mentor, as
-    // a table (Name/Email/Role/Batch/Actions).
+    expect(screen.getByRole("button", { name: "Transfer" })).toBeInTheDocument();
     expect(screen.getByText("Amaya Perera")).toBeInTheDocument();
-    expect(screen.getByText("Dev Mentor")).toBeInTheDocument();
   });
 
-  it("shows a student's current batch from the roster read, and — for a mentor", async () => {
+  it("shows a student's current batch from the roster read", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
-    listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+    listUsers.mockResolvedValue({ data: [STUDENT_DETAIL], error: undefined });
     // STUDENT_DETAIL appears in BATCH's roster -- the Batch column reads this
     // back as "Batch Aurora" rather than re-deriving it from User (which
     // carries no batch field at all, spec/openapi.yaml's User schema).
@@ -221,13 +233,9 @@ describe("StudentsPage", () => {
     const studentRow = screen.getByText("Amaya Perera").closest("tr");
     expect(studentRow).not.toBeNull();
     expect(studentRow).toHaveTextContent("Batch Aurora");
-
-    const mentorRow = screen.getByText("Dev Mentor").closest("tr");
-    expect(mentorRow).not.toBeNull();
-    expect(mentorRow).toHaveTextContent("—");
   });
 
-  it("points a reader at Add student when nobody is registered yet", async () => {
+  it("points a reader at Register when nobody is registered yet", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
@@ -236,16 +244,14 @@ describe("StudentsPage", () => {
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
 
-    // The hint used to point at Settings (ADR-0022). Register is back on this
-    // page now (ADR-0034), so the hint points at the disclosure above instead.
-    // The full sentence, not a bare "Add student" substring match -- the
-    // action row's own "+ Add student" summary matches that too.
+    // Default filter is Students, so the empty state names students
+    // specifically rather than the old role-neutral "mentor or student".
     expect(
-      screen.getByText("Use Add student above to register the first mentor or student."),
+      screen.getByText("Use + Register above to add the first student."),
     ).toBeInTheDocument();
   });
 
-  it("tells a reader filtered to an empty role how to get back to everyone", async () => {
+  it("tells a reader filtered to an empty role, without a mentor leaking through", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
@@ -255,13 +261,12 @@ describe("StudentsPage", () => {
     render(await StudentsPage({ searchParams: Promise.resolve({ show: "student" }) }));
 
     expect(screen.getByText("No students yet.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Clear filter" })).toHaveAttribute("href", "/students");
     // The Mentor that exists is filtered OUT, not just the empty state shown
     // alongside a table that still renders it.
     expect(screen.queryByText("Dev Mentor")).not.toBeInTheDocument();
   });
 
-  it("narrows the table to one role via the filter chips", async () => {
+  it("narrows the table to one role via the filter chips, with its own consistent action set", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     defaultReads();
@@ -271,6 +276,12 @@ describe("StudentsPage", () => {
     expect(screen.getByRole("link", { name: "Mentors" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Dev Mentor")).toBeInTheDocument();
     expect(screen.queryByText("Amaya Perera")).not.toBeInTheDocument();
+    // No "All" chip any more -- Students and Mentors are the only two.
+    expect(screen.queryByRole("link", { name: "All" })).not.toBeInTheDocument();
+    // Every visible row (just the one Mentor) carries the SAME action set --
+    // Archive only, no Transfer -- which is the whole point of dropping All.
+    expect(screen.queryByRole("button", { name: "Transfer" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeInTheDocument();
   });
 
   it("renders the problem detail when a read errors -- must not silently fall through to an empty state", async () => {
@@ -357,6 +368,7 @@ describe("StudentsPage", () => {
     createBatch.mockResolvedValue({ error: undefined, data: BATCH });
 
     render(await StudentsPage({ searchParams: searchParams() }));
+    openDialog("Create batch");
 
     fireEvent.change(screen.getByLabelText("Batch name"), { target: { value: "Batch Bramble" } });
     fireEvent.change(screen.getByLabelText("Batch start date"), { target: { value: "2026-09-10" } });

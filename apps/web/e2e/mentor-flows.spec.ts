@@ -292,10 +292,11 @@ test.describe("mentor flows (dev-admin-1)", () => {
     // row now rather than a bulleted <li> list.
     await page.goto("/students");
 
-    // Collapsed by default (spec D4) -- a real browser (unlike the jsdom unit
-    // tests) actually hides a closed <details>'s content, so the form must be
-    // opened before anything inside it is fillable.
-    await page.getByText("+ Add student").click();
+    // A modal dialog now (2026-10-09 revision, replacing the earlier
+    // <details> disclosure) -- closed by default, so the trigger has to be
+    // clicked before anything inside is fillable, same reasoning as before
+    // just a different element.
+    await page.getByRole("button", { name: "+ Register" }).click();
 
     const stamp = String(Date.now());
     const email = `e2e.throwaway.${stamp}@dev.local`;
@@ -312,7 +313,10 @@ test.describe("mentor flows (dev-admin-1)", () => {
     // start date" the same way -- both are strict-mode violations without it.
     await page.getByLabel("Batch", { exact: true }).selectOption({ label: SEED_BATCH_NAMES.B });
     await page.getByLabel("Start date", { exact: true }).fill(today);
-    await page.getByRole("button", { name: "Register" }).click();
+    // exact: true here too -- "Register" is a substring of the trigger's own
+    // "+ Register", and Playwright's default name match is substring, not
+    // exact, so without it this resolves to both buttons.
+    await page.getByRole("button", { name: "Register", exact: true }).click();
     await expect(page.getByText("Registered.")).toBeVisible();
 
     // Still on /students -- confirm the new row landed in the directory

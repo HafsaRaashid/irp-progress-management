@@ -320,6 +320,33 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 }
 .text-link:hover { color: var(--primary); }
 
+/* The native <dialog> element (components/ui/dialog.tsx) rather than a
+   hand-rolled overlay div -- §9's "no reinvented form controls" applies to a
+   modal exactly as it does to a disclosure: showModal() gives focus
+   trapping, Escape-to-close, and top-layer stacking for free. This resets
+   the UA default box (a bordered, padded, opaque white card) to a bare
+   positioning host; Dialog's own inner Panel carries the actual surface,
+   border, radius and padding so a dialog's content looks identical to every
+   other card in the app. The browser centres a `showModal()`'d dialog on its
+   own -- no margin/inset rules needed here for that. */
+.modal {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  max-width: min(480px, calc(100vw - 32px));
+  width: 100%;
+  /* The UA centres a showModal()'d dialog with `margin: auto` against its
+     fixed, inset-0 box -- but Tailwind's preflight resets every element's
+     margin to 0, which silently kills that and pins the dialog to the top
+     left. Measured, not theorised: the first render of these dialogs sat in
+     the corner. Restoring `auto` here centres both axes again. */
+  margin: auto;
+}
+.modal::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
 /* §9: "Skeletons for loading, never a centred spinner." The pulse is a
    lightness shift between the two neutral surface tokens, so it stays a
    surface rather than becoming a fifth colour. */
