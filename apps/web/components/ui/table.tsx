@@ -31,9 +31,18 @@
  */
 import type { ReactNode, TdHTMLAttributes, ThHTMLAttributes } from "react";
 
-export function Table({ children }: { children: ReactNode }) {
+/**
+ * `fixed` is opt-in (2026-10-09, the Users page) rather than the default:
+ * `table-layout: fixed` with no column widths divides the available width
+ * EQUALLY between columns, which is what an evenly balanced directory wants
+ * but not what Roster and Cycles want -- those carry short numeric columns
+ * beside long prose ones and are better served by auto layout sizing each to
+ * its content. Opting in per table keeps both behaviours without a second
+ * component.
+ */
+export function Table({ children, fixed = false }: { children: ReactNode; fixed?: boolean }) {
   return (
-    <table className="w-full text-[13px]" style={{ color: "var(--ink)" }}>
+    <table className={`w-full text-[13px] ${fixed ? "table-fixed" : ""}`} style={{ color: "var(--ink)" }}>
       {children}
     </table>
   );

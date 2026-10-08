@@ -72,14 +72,27 @@ export function RegisterForm({ batches }: { batches: BatchOption[] }) {
           className={FIELD_CLASS}
         />
       </label>
+      {/*
+        The one field on this form nobody can guess the meaning of. It is
+        what apps/api matches the signed-in token's `oid` claim against
+        (spec/openapi.yaml: "Entra object id (oid) of the account"), NOT the
+        person's email and NOT the User row's own id -- and getting it wrong
+        produces a row that simply 403s forever at sign-in rather than any
+        visible error at registration time.
+      */}
       <label className="flex flex-col gap-1">
         <SectionLabel>External id</SectionLabel>
         <input
           name="externalId"
           required
           aria-label="External id"
+          aria-describedby="external-id-hint"
           className={FIELD_CLASS}
         />
+        <span id="external-id-hint" className="text-xs" style={{ color: "var(--ink-muted)" }}>
+          Their Microsoft Entra object ID (Azure portal → the user&apos;s profile → Object ID).
+          Not their email.
+        </span>
       </label>
       {role === "Student" && (
         <>

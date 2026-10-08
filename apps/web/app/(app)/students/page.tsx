@@ -28,6 +28,16 @@ const FILTERS: readonly { key: RoleFilter; label: string }[] = [
 ];
 
 /**
+ * The column-header treatment the student surfaces use for their own meta
+ * lines (SectionLabel's small-caps mono), applied locally rather than by
+ * editing the shared `Th` -- Roster and Cycles share that component and
+ * were not part of this pass.
+ */
+function ColHead({ children }: { children: string }) {
+  return <span className="text-xs uppercase tracking-[0.08em]">{children}</span>;
+}
+
+/**
  * The mentor's directory of people and batches (FR-3, FR-5, FR-6, FR-8).
  * Admin-only, matching roster/page.tsx and review/[studentId]/page.tsx's
  * gate -- a Student hitting this route is bounced to "/" rather than shown
@@ -186,34 +196,37 @@ export default async function StudentsPage({
       {/* "Register", not "Add student" -- this one trigger covers both
           roles via the form's own Role select, and a label naming only one
           of them misled a mentor who opened it to add the other. */}
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-wrap gap-3">
-          <Dialog triggerLabel="+ Register" title="Register">
-            <RegisterForm batches={batchOptions} />
-          </Dialog>
-          <Dialog triggerLabel="+ Create batch" title="Create batch">
-            <CreateBatchForm />
-          </Dialog>
-        </div>
-
-        <Link href="/students?view=archived" className="text-link text-sm">
-          View archived
-        </Link>
+      <div className="mb-7 flex flex-wrap gap-3">
+        <Dialog triggerLabel="+ Register" title="Register">
+          <RegisterForm batches={batchOptions} />
+        </Dialog>
+        <Dialog triggerLabel="+ Create batch" title="Create batch">
+          <CreateBatchForm />
+        </Dialog>
       </div>
 
       {/* The one filter vocabulary this app already has (Review, Roster,
-          Cycles) -- `.chip` + `aria-current="page"` + `?show=`. */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        {FILTERS.map(({ key, label }) => (
-          <Link
-            key={key}
-            href={key === "student" ? { pathname: "/students" } : { pathname: "/students", query: { show: key } }}
-            aria-current={key === filter ? "page" : undefined}
-            className="chip"
-          >
-            {label}
-          </Link>
-        ))}
+          Cycles) -- `.chip` + `aria-current="page"` + `?show=`.
+          "View archived" sits at this row's far end rather than up with the
+          buttons: it switches which set of people the table shows, which is
+          what these chips do, not an action that changes anything. */}
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map(({ key, label }) => (
+            <Link
+              key={key}
+              href={key === "student" ? { pathname: "/students" } : { pathname: "/students", query: { show: key } }}
+              aria-current={key === filter ? "page" : undefined}
+              className="chip"
+            >
+              {label}
+            </Link>
+          ))}
+        </div>
+
+        <Link href="/students?view=archived" className="chip">
+          View archived
+        </Link>
       </div>
 
       <Panel>
@@ -223,7 +236,11 @@ export default async function StudentsPage({
             hint={`Use + Register above to add the first ${filter === "mentor" ? "mentor" : "student"}.`}
           />
         ) : (
-          <Table>
+          /* `fixed`: equal-width columns rather than content-sized ones, so
+             the four (three, for mentors) read as an even grid instead of
+             leaving Batch stranded between a wide Email and a right-drifting
+             Actions. */
+          <Table fixed>
             {/*
               No Role column, and no Batch column in the Mentors view: with
               "all" gone every row in a given view has the same role, so a
@@ -237,19 +254,54 @@ export default async function StudentsPage({
             */}
             <thead>
               <tr>
-                <Th>Name</Th>
-                <Th>Email</Th>
-                {filter === "student" && <Th>Batch</Th>}
-                <Th>Actions</Th>
+                <Th><ColHead>Name</ColHead></Th>
+                <Th><ColHead>Email</ColHead></Th>
+                {filter === "student" && <Th><ColHead>Batch</ColHead></Th>}
+                <Th><ColHead>Actions</ColHead></Th>
               </tr>
             </thead>
             <tbody>
-              {shownUsers.map((u) => (
-                <tr key={u.id} style={{ borderTop: "1px solid var(--line)" }}>
-                  <Td style={{ color: "var(--ink)" }}>{u.displayName}</Td>
-                  <Td style={{ color: "var(--ink-muted)" }}>{u.email}</Td>
+              {shownUsers.map((u) => {
+                const isSelf = u.id === user.id;
+                const batchName = batchByStudentId.get(u.id);
+                return (
+                <tr
+                  key={u.id}
+                  className="transition-colors hover:bg-[var(--bg)]"
+                  style={{ borderTop: "1px solid var(--line)" }}
+                >
+                  <Td style={{ color: "var(--ink)" }}>
+                    <span className="font-medium">{u.displayName}</span>
+                    {/* The signed-in mentor's own row, named rather than left
+                        to be inferred from a missing Archive button. */}
+                    {isSelf && (
+                      <span className="ml-2 text-xs" style={{ color: "var(--ink-muted)" }}>You</span>
+                    )}
+                  </Td>
+                  {/* truncate, not wrap: table-fixed splits the width evenly,
+                      and an address with no spaces in it has no break point
+                      to wrap at, so it would otherwise spill into the next
+                      column. `title` keeps the full value reachable. */}
+                  <Td style={{ color: "var(--ink-muted)" }}>
+                    <span className="block truncate" title={u.email}>{u.email}</span>
+                  </Td>
                   {filter === "student" && (
-                    <Td style={{ color: "var(--ink-muted)" }}>{batchByStudentId.get(u.id) ?? "—"}</Td>
+                    <Td>
+                      {batchName === undefined ? (
+                        <span style={{ color: "var(--ink-muted)" }}>—</span>
+                      ) : (
+                        /* --primary on --primary-weak is one of the pairs
+                           theme-tokens.test.ts already verifies (5.99:1
+                           light, 5.50:1 dark), so this accent introduces no
+                           unaudited colour. */
+                        <span
+                          className="inline-block rounded-full px-2 py-0.5 text-xs font-medium"
+                          style={{ background: "var(--primary-weak)", color: "var(--primary)" }}
+                        >
+                          {batchName}
+                        </span>
+                      )}
+                    </Td>
                   )}
                   <Td>
                     <div className="flex items-center gap-3">
@@ -270,11 +322,21 @@ export default async function StudentsPage({
                           />
                         </Dialog>
                       )}
-                      <ArchiveButton userId={u.id} />
+                      {/* No Archive on your own row: the API refuses a
+                          self-archive with a 409 (SelfArchiveError), so the
+                          button could only ever fail there. Offering a
+                          control whose single outcome is an error message
+                          is worse than not offering it. */}
+                      {isSelf ? (
+                        <span className="text-sm" style={{ color: "var(--ink-muted)" }}>—</span>
+                      ) : (
+                        <ArchiveButton userId={u.id} />
+                      )}
                     </div>
                   </Td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </Table>
         )}

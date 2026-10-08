@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import StudentsPage from "@/app/(app)/students/page";
 
 // Same pattern as roster-page.test.tsx / review-page.test.tsx: StudentsPage is
@@ -249,6 +249,34 @@ describe("StudentsPage", () => {
     expect(
       screen.getByText("Use + Register above to add the first student."),
     ).toBeInTheDocument();
+  });
+
+  it("offers no Archive on the signed-in mentor's own row, and names it 'You'", async () => {
+    // The API refuses a self-archive with a 409 (SelfArchiveError), so the
+    // button could only ever produce an error message there.
+    getCurrentUserOrRedirect.mockResolvedValue({ ...ADMIN_USER, id: MENTOR_DETAIL.id });
+    apiClient.mockResolvedValue({});
+    defaultReads();
+
+    render(await StudentsPage({ searchParams: Promise.resolve({ show: "mentor" }) }));
+
+    const ownRow = screen.getByText("You").closest("tr");
+    expect(ownRow).not.toBeNull();
+    expect(within(ownRow!).queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+  });
+
+  it("still offers Archive on OTHER mentors' rows", async () => {
+    // The guard above must be scoped to the signed-in mentor alone -- a
+    // blanket "mentors cannot be archived" would be a different, wrong rule
+    // (FR-5 archives either role).
+    getCurrentUserOrRedirect.mockResolvedValue({ ...ADMIN_USER, id: "someone-else" });
+    apiClient.mockResolvedValue({});
+    defaultReads();
+
+    render(await StudentsPage({ searchParams: Promise.resolve({ show: "mentor" }) }));
+
+    expect(screen.queryByText("You")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeInTheDocument();
   });
 
   it("tells a reader filtered to an empty role, without a mentor leaking through", async () => {
