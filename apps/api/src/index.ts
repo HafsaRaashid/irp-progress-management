@@ -34,7 +34,7 @@ await bootstrap({
     const absenceRepo = createAbsenceRepo(prisma);
     const batchRepo = createBatchRepo(prisma);
     const mentorRecordRepo = createMentorRecordRepo(prisma);
-    const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
+    const dayService = createDayService({ entryRepo, absenceRepo, batchRepo, mentorRecordRepo });
     const rosterService = createRosterService({ batchRepo, dayService, mentorRecordRepo });
     const dashboardService = createDashboardService({ batchRepo, dayService });
     const getKey = createRemoteJWKSet(new URL(config.jwksUri));

@@ -32,22 +32,60 @@ function formString(value: FormDataEntryValue | null): string {
  * useActionState — see markAbsent and removeAbsence below, which regained
  * this shape after a review caught that their earlier plain-form wiring
  * silently discarded the `{ error }` this function type promises to surface.
+ *
+ * Returns `{ ok: true }` rather than `null` on success, for the same reason
+ * `saveDayRecord` in review/[studentId]/review-actions.ts does: resolving to
+ * nothing is indistinguishable, on screen, from a click that never reached
+ * the server. An entry is appended to a list the student cannot see from the
+ * composer, so unlike markAbsent and removeAbsence below — whose result is
+ * visible immediately, the panel re-renders as "Marked absent — …" or loses
+ * it — a silent success here has no other evidence at all. `null` remains
+ * the *initial* state useActionState is seeded with (see
+ * entry-composer.tsx); the action itself never returns it.
+ *
+ * markAbsent and removeAbsence deliberately keep their `null` success: their
+ * outcome is already on screen, so there is nothing ambiguous to confirm.
  */
 export async function submitEntry(
-  _prev: { error: string } | null,
+  _prev: { ok: true } | { error: string; body: string; meetingMinutes?: number } | null,
   formData: FormData,
-): Promise<{ error: string } | null> {
+): Promise<{ ok: true } | { error: string; body: string; meetingMinutes?: number }> {
   const client = await apiClient();
+  const entryBody = formString(formData.get("body"));
+  // "" (never filled in) parses to NaN, which must mean "omitted" -- a
+  // bare Number("") is 0, which would silently claim the student reported
+  // zero minutes when they never touched the field at all. Spread, not a
+  // plain property: the request body's meetingMinutes is `number |
+  // undefined`, and exactOptionalPropertyTypes forbids assigning undefined
+  // to a key that must be entirely absent when there is nothing to report.
+  const minutesRaw = Number(formString(formData.get("meetingMinutes")));
+  const meetingMinutes = Number.isNaN(minutesRaw) ? undefined : minutesRaw;
   const { error } = await createEntry({
     client,
     body: {
       entryDate: formString(formData.get("entryDate")),
-      body: formString(formData.get("body")),
+      body: entryBody,
+      ...(meetingMinutes !== undefined && { meetingMinutes }),
     },
   });
-  if (error !== undefined) return { error: problemMessage(error, "The entry was not accepted.") };
+  // The rejected text travels back with the error. React 19 resets an
+  // uncontrolled <form action={fn}> when the action COMPLETES, not when it
+  // SUCCEEDS, so without this a rejected entry cleared the textarea and the
+  // student lost the update they had just written -- worst at a grace-window
+  // deadline, which is both when a rejection is likeliest and when retyping
+  // costs most. entry-composer.tsx re-seeds BOTH fields from this, which
+  // works WITH the reset instead of racing it -- meetingMinutes travels back
+  // alongside body for exactly the same reason: losing one field silently
+  // while the other visibly survives is worse than losing both consistently.
+  if (error !== undefined) {
+    return {
+      error: problemMessage(error, "The entry was not accepted."),
+      body: entryBody,
+      ...(meetingMinutes !== undefined && { meetingMinutes }),
+    };
+  }
   revalidatePath("/");
-  return null;
+  return { ok: true };
 }
 
 /**
@@ -65,20 +103,30 @@ export async function submitEntry(
  * and that requires this two-argument reducer shape back.)
  */
 export async function markAbsent(
-  _prev: { error: string } | null,
+  _prev: { ok: true; reason: string } | { error: string } | null,
   formData: FormData,
-): Promise<{ error: string } | null> {
+): Promise<{ ok: true; reason: string } | { error: string }> {
   const client = await apiClient();
+  const reason = formString(formData.get("reason"));
   const { error } = await createAbsence({
     client,
     body: {
       date: formString(formData.get("date")),
-      reason: formString(formData.get("reason")),
+      reason,
     },
   });
   if (error !== undefined) return { error: problemMessage(error, "The absence was not recorded.") };
   revalidatePath("/");
-  return null;
+  // Returns { ok } rather than null, for the same reason submitEntry does.
+  //
+  // This USED to be a legitimate silent success: the control lived inside the
+  // day card, so recording an absence visibly rewrote the panel it sat in.
+  // Moving it into the composer broke that -- the button is now in one column
+  // and the "Marked absent — …" result appears in a card further down, so a
+  // student clicking it saw nothing happen where they were looking. The
+  // confirmation carries the reason back so the composer can say what it
+  // recorded, not merely that it recorded something.
+  return { ok: true, reason };
 }
 
 /**

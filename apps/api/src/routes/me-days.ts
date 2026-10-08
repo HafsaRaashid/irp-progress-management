@@ -23,6 +23,7 @@ export function toApiDay(v: DayView): ApiDaySummary {
     reportId: v.reportId,
     reportStatus: v.reportStatus === null ? null : REPORT_STATUS_TO_API[v.reportStatus],
     absenceReason: v.absenceReason,
+    mentorNote: v.mentorNote,
     entries: v.entries.map(toApiEntry),
   };
 }

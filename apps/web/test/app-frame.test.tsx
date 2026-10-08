@@ -101,18 +101,18 @@ describe("Sidebar", () => {
     expect(students).not.toHaveAttribute("aria-disabled");
   });
 
-  it("Student role: My month is a real link now that /my-month has a page, on the Student list", () => {
+  it("Student role: My progress is a real link now that /my-progress has a page, on the Student list", () => {
     // Task 8 added apps/web/app/(app)/my-month/page.tsx, so "/my-month" is a
     // route typedRoutes accepts. My month is a link; it carries no
     // aria-disabled.
     render(<Sidebar role="Student" />);
 
-    const myMonth = screen.getByRole("link", { name: /My month/ });
-    expect(myMonth).toHaveAttribute("href", "/my-month");
+    const myMonth = screen.getByRole("link", { name: /My progress/ });
+    expect(myMonth).toHaveAttribute("href", "/my-progress");
     expect(myMonth).not.toHaveAttribute("aria-disabled");
   });
 
-  it("Student role: sees only Today and My month -- no mentor-only destinations at all", () => {
+  it("Student role: sees only Today and My progress -- no mentor-only destinations at all", () => {
     // Role gating hides mentor destinations entirely rather than merely
     // disabling them -- a Student should find no trace of Roster, Cycles, or
     // Students in the DOM, even though every one of those is now a real link

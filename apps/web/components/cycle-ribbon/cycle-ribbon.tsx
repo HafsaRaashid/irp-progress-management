@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 /**
  * The VISUAL mark for one required day. Deliberately distinct from
  * @irp/core's domain-level DayStatus union — this is presentation, that is
@@ -26,7 +28,25 @@ export interface RibbonProps {
   /** Dates after which a weekend Extra slot is rendered (FR-33). */
   extraAfter?: string[];
   label?: string;
-  caption?: string;
+  /**
+   * Arbitrary content rendered inside the panel, below the marks -- a
+   * ReactNode rather than plain text so a caller can put a CountsRow (and
+   * anything beside it) inside the SAME surfaced block the ribbon draws,
+   * instead of floating it on the bare canvas underneath. No caller used this
+   * as a string before it widened, so nothing existing changes.
+   */
+  caption?: ReactNode;
+  /**
+   * §10's second moment — "Submission lands: the student's day mark fills."
+   * OFF by default (ADR-0032), so the mentor's ribbon renders byte-for-byte
+   * what it rendered before this existed. Named for what it DOES, never for
+   * who uses it: the mentor surfaces get their own redesign on a later branch
+   * and will turn this on, so a `studentMode` here would have to be unpicked.
+   *
+   * This does NOT extend §10's ≤250ms load-stagger budget — it replaces each
+   * mark's own rise animation rather than adding to the run.
+   */
+  celebrate?: boolean;
 }
 
 // docs/design-system.md §3.2 / §7: full (ok) · partial (proportional fill,
@@ -67,7 +87,7 @@ function dayOfMonth(iso: string): string {
   return iso.slice(8, 10);
 }
 
-function DaySlot({ day, delay }: { day: RibbonDay; delay: string }) {
+function DaySlot({ day, delay, celebrate }: { day: RibbonDay; delay: string; celebrate: boolean }) {
   const heightPct = day.mark === "partial" ? Math.round((day.fill ?? 0) * 100) : 100;
   const background = day.mark === "future" ? "transparent" : MARK_COLOR[day.mark];
   const label = day.isToday === true ? `${day.date}: ${day.mark}, today` : `${day.date}: ${day.mark}`;
@@ -91,7 +111,7 @@ function DaySlot({ day, delay }: { day: RibbonDay; delay: string }) {
       >
         <span
           data-testid="ribbon-bar"
-          className="ribbon-mark block w-full rounded-[2px]"
+          className={`${celebrate ? "ribbon-mark-celebrate" : "ribbon-mark"} block w-full rounded-[2px]`}
           style={{
             height: `${String(heightPct)}%`,
             background,
@@ -167,7 +187,7 @@ function ExtraSlot({ after, delay }: { after: string; delay: string }) {
  * its panel, and there was no room under a mark for its date. The max stops a
  * short cycle from stretching into bar-chart territory.
  */
-export function CycleRibbon({ days, extraAfter = [], label, caption }: RibbonProps) {
+export function CycleRibbon({ days, extraAfter = [], label, caption, celebrate = false }: RibbonProps) {
   const extras = new Set(extraAfter);
   // The stagger runs over rendered slots, extras included, so the sweep reads
   // left-to-right at an even rate rather than pausing at every weekend.
@@ -205,7 +225,7 @@ export function CycleRibbon({ days, extraAfter = [], label, caption }: RibbonPro
       <ol className="flex items-end gap-[3px]" key={days.map((d) => d.mark).join("")}>
         {days.flatMap((day) => {
           const slots = [
-            <DaySlot key={day.date} day={day} delay={staggerDelay(slotIndex++, slotCount)} />,
+            <DaySlot key={day.date} day={day} delay={staggerDelay(slotIndex++, slotCount)} celebrate={celebrate} />,
           ];
           if (extras.has(day.date)) {
             slots.push(
@@ -225,11 +245,14 @@ export function CycleRibbon({ days, extraAfter = [], label, caption }: RibbonPro
         {days.length} required days in this cycle
       </span>
 
-      {caption !== undefined && (
-        <p className="tabular mt-3 text-xs" style={{ color: "var(--ink-muted)" }}>
-          {caption}
-        </p>
-      )}
+      {/*
+        A plain `<div>`, not the `<p>` this used to be: a plain string caption
+        still reads fine inside one, but CountsRow renders a <div>, and a
+        block element inside a <p> is invalid HTML and trips a hydration
+        warning. Typography is left to the caller -- a bare string caption
+        would need its own styling now, but nothing has ever passed one.
+      */}
+      {caption !== undefined && <div className="mt-3">{caption}</div>}
     </figure>
   );
 }

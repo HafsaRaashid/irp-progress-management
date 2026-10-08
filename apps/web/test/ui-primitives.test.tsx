@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { Button } from "@/components/ui/button";
 import { StatusPill } from "@/components/ui/status-pill";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Panel } from "@/components/ui/panel";
 import { FieldLabel } from "@/components/ui/field-label";
 import { Table, Th, Td } from "@/components/ui/table";
 
@@ -115,6 +116,90 @@ describe("EmptyState", () => {
     expect(screen.getByText("Submit today's update.")).toBeInTheDocument();
     rerender(<EmptyState title="No entries yet" />);
     expect(screen.queryByText("Submit today's update.")).not.toBeInTheDocument();
+  });
+
+  /**
+   * ADR-0032's load-bearing property: the opt-in slots are OFF by default, so
+   * the mentor's rendering is unchanged because the DEFAULT PATH is unchanged.
+   * This is the characterisation test that stops the default drifting -- if a
+   * future change makes an icon render unconditionally, the mentor surfaces
+   * that use EmptyState (review, roster, cycles) change without anyone asking.
+   */
+  it("renders nothing extra when neither slot is supplied -- the default path ADR-0032 protects", () => {
+    const { container } = render(<EmptyState title="No entries yet" />);
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    // The whole subtree is the title and nothing else.
+    expect(container.textContent).toBe("No entries yet");
+  });
+
+  it("renders an icon and an action when given them", () => {
+    render(
+      <EmptyState
+        title="No entry for today yet."
+        icon={<svg data-testid="the-icon" />}
+        action={<button type="button">Submit today</button>}
+      />,
+    );
+    expect(screen.getByTestId("the-icon")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit today" })).toBeInTheDocument();
+  });
+
+  /**
+   * design-system §12: a glyph never carries meaning alone. The icon is
+   * decoration beside copy that already says the same thing, so it must be
+   * hidden from assistive technology rather than announced as a second,
+   * wordless version of the message.
+   */
+  it("hides the icon from assistive technology", () => {
+    const { container } = render(
+      <EmptyState title="No entry for today yet." icon={<svg data-testid="the-icon" />} />,
+    );
+    const wrapper = container.querySelector("[aria-hidden=\"true\"]");
+    expect(wrapper).not.toBeNull();
+    expect(wrapper!.querySelector("[data-testid=\"the-icon\"]")).not.toBeNull();
+  });
+});
+
+/**
+ * Panel had NO direct test coverage anywhere in the suite before this --
+ * every assertion about it lived inside page-level tests that happened to
+ * render one.
+ */
+describe("Panel", () => {
+  it("renders a solid surface by default -- the path every existing caller relies on", () => {
+    const { container } = render(<Panel>content</Panel>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.style.background).toBe("var(--surface)");
+    expect(el.className).not.toContain("border-dashed");
+  });
+
+  it("switches to the dense roster surface with sunk", () => {
+    const { container } = render(<Panel sunk>content</Panel>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.style.background).toBe("var(--surface-sunk)");
+  });
+
+  /**
+   * ADR-0032's opt-in contract: a caller that never passes `quiet` must get
+   * exactly the solid-surface rendering above, unchanged. This is the
+   * characterisation test that protects that default.
+   */
+  it("drops the fill and dashes the border when quiet, without changing a caller that omits it", () => {
+    const { container } = render(<Panel quiet>content</Panel>);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.style.background).toBe("transparent");
+    expect(el.className).toContain("border-dashed");
+  });
+
+  it("still renders its header row while quiet", () => {
+    render(
+      <Panel quiet title="Tuesday 6 October">
+        content
+      </Panel>,
+    );
+    expect(screen.getByText("Tuesday 6 October")).toBeInTheDocument();
   });
 });
 

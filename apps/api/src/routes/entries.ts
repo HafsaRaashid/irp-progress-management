@@ -28,6 +28,7 @@ export function toApiEntry(e: EntryRecord): ApiEntry {
     submittedAt: e.submittedAt.toISOString(),
     isLate: e.isLate,
     isExtra: e.isExtra,
+    meetingMinutes: e.meetingMinutes,
   };
 }
 
@@ -46,6 +47,12 @@ export const entryRoutes: FastifyPluginAsync<{
         entryDate: civilDate(req.body.entryDate),
         body: req.body.body,
         submittedAt: new Date(),
+        // Spread, not a bare property: req.body.meetingMinutes is `number |
+        // undefined` (optional in EntryCreate), and exactOptionalPropertyTypes
+        // forbids assigning that union to addEntry's `meetingMinutes?:
+        // number` unless the key is omitted outright when the value is
+        // undefined -- the spread does that, a plain property would not.
+        ...(req.body.meetingMinutes !== undefined && { meetingMinutes: req.body.meetingMinutes }),
       });
       // FR-21, fire-and-forget (design spec D5) — never awaited. notify()
       // is contractually synchronous-and-non-throwing, but the write above

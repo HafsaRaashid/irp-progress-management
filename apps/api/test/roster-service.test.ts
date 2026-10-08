@@ -32,7 +32,7 @@ describe.skipIf(!dbUrl)("createRosterService", () => {
   const absenceRepo = createAbsenceRepo(prisma);
   const batchRepo = createBatchRepo(prisma);
   const mentorRecordRepo = createMentorRecordRepo(prisma);
-  const dayService = createDayService({ entryRepo, absenceRepo, batchRepo });
+  const dayService = createDayService({ entryRepo, absenceRepo, batchRepo, mentorRecordRepo });
   const roster = createRosterService({ batchRepo, dayService, mentorRecordRepo });
 
   beforeEach(async () => {

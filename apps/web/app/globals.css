@@ -1,9 +1,21 @@
 @import "tailwindcss";
 
-/* Verified light theme. docs/design-system.md §3.1 — 35 pairs pass WCAG AA,
-   every token in sRGB gamut. Do not substitute values.
-   --primary is the Bistec slot: a placeholder indigo until the brand hex
-   arrives. Any replacement must avoid hue 20-70 (missed/late) and 140-170 (ok). */
+/* Verified light theme. docs/design-system.md §3.1 — every rendered pair is
+   gated by test/theme-tokens.test.ts on every run, both themes. Every token is
+   in sRGB gamut. Do not substitute values.
+
+   --primary is the Bistec slot, FILLED (ADR-0030): #045aa9,
+   oklch(0.469 0.145 253.6), sampled from assets/hearts-academy-mark.png — its
+   largest single cluster, 15.2% of the mark's opaque pixels.
+
+   It is drawn as TEXT as well as fill — .nav-item[data-active],
+   .chip[aria-current], .text-link:hover, and --st-review — so it carries 4.5:1,
+   not 3:1. That is why the logo's brighter mid-blue could not be used: #0188c5
+   measures 3.94:1 on white and the eyeballed #1C8FD1 measures 3.56:1. Both are
+   in the asset; neither is legible as ink.
+
+   Any future replacement must clear hue 20-70 (missed/late) and 140-170 (ok),
+   and must keep the gate green. */
 :root {
   /* Tells the browser to render NATIVE controls (the type="date" calendar
      indicator, scrollbars, select dropdowns) in a light-aware palette. Tokens
@@ -26,8 +38,19 @@
   --line-strong: #898c96;
   --ink: #1b1f2a;
   --ink-muted: #5f636e;
-  --primary: #3c4ba2;
-  --primary-weak: #e9eefe;
+  --primary: #045aa9;
+  --primary-weak: #e5f0fd;
+
+  /* The student greeting band's gradient, and nothing else -- not a general
+     surface. --greeting-from sits on --primary's own hue (253.4) so the band
+     reads as the brand colour opening out; --greeting-to is clamped to 225.
+     The clamp is LOAD-BEARING, not stylistic: the real logo gradient runs
+     down to 168.6 degrees, which is INSIDE the 140-170 band reserved for
+     --st-ok. Both stops are gated against --ink and --ink-muted in
+     test/theme-tokens.test.ts. */
+  --greeting-from: #045aa9;
+  --greeting-to: #0079ad;
+  --greeting-ink: #ffffff;
 
   --st-ok: #267b4c;
   --st-late: #9f5c0c;
@@ -85,12 +108,15 @@
     --line-strong: #656974;
     --ink: #f2f3f6;
     --ink-muted: #a7aab4;
-    --primary: #8a9ff0;
-    --primary-weak: #262c45;
+    --primary: #6da8ee;
+    --primary-weak: #1d2f44;
     --st-ok: #65c98c;
     --st-late: #eeac53;
     --st-absent: #9a9eaa;
     --st-missed: #ed7473;
+    --greeting-from: #06406f;
+    --greeting-to: #055a7e;
+    --greeting-ink: #ffffff;
     /* dark-tokens:end */
   }
 }
@@ -108,12 +134,15 @@
   --line-strong: #656974;
   --ink: #f2f3f6;
   --ink-muted: #a7aab4;
-  --primary: #8a9ff0;
-  --primary-weak: #262c45;
+  --primary: #6da8ee;
+  --primary-weak: #1d2f44;
   --st-ok: #65c98c;
   --st-late: #eeac53;
   --st-absent: #9a9eaa;
   --st-missed: #ed7473;
+  --greeting-from: #06406f;
+  --greeting-to: #055a7e;
+  --greeting-ink: #ffffff;
   /* dark-tokens:end */
 }
 
@@ -322,6 +351,29 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   animation: ribbon-rise 160ms var(--ease-out-quart) both;
 }
 
+/* §10, moment 2: "Submission lands — the student's day mark fills. The action
+   visibly enters the register. This is the one delight moment in the system."
+
+   A single small overshoot and settle, NOT a spring: §10 permits "no bounce,
+   no elastic". 1.06 at the peak is about 2-3px on a 44px track — enough to
+   read as arrival, not enough to read as a bounce.
+
+   This is a SEPARATE moment from the load stagger and must not extend its
+   ≤250ms budget: .ribbon-mark's own ribbon-rise is untouched above, and
+   nothing here changes STAGGER_WINDOW_MS. Opt-in via CycleRibbon's
+   `celebrate` prop (ADR-0032), so the mentor's ribbon is unchanged because
+   the default path is unchanged. */
+@keyframes ribbon-celebrate {
+  0%   { transform: scaleY(0); }
+  70%  { transform: scaleY(1.06); }
+  100% { transform: scaleY(1); }
+}
+.ribbon-mark-celebrate {
+  transform-origin: bottom;
+  animation: ribbon-celebrate 320ms var(--ease-out-quart) both;
+}
+
+
 /* §10, moment 3: "Review state change — 180ms crossfade on the status pill."
    Replays only when the pill actually remounts, which the review page forces
    by keying the pill on the status it is rendering. */
@@ -331,9 +383,59 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 }
 .pill-crossfade { animation: pill-fade 180ms var(--ease-out-quart) both; }
 
+/* The mentor-note disclosure's chevron. A plain transition, not an animation
+   -- it fires once per click rather than on mount, so it needs its own entry
+   in the reduced-motion block below (the animation-duration trick that
+   handles the keyframe-based entries doesn't touch a transition). */
+.chevron-rotate { transition: transform 150ms var(--ease-out-quart); }
+
+/* The student greeting band (design-system §8.2). A FILL, not a card, so it
+   carries no border -- §5 forbids a 1px border and a >=16px blur shadow on the
+   same element, and this has neither. Warm-zone padding per §5 (24-32px) and
+   the panel radius, so it sits in the same rhythm as the ribbon below it.
+   Both stops are tokens: every colour in apps/web resolves through one, and a
+   literal would not re-theme. */
+.greeting-band {
+  border-radius: var(--radius-panel);
+  padding: 28px 32px;
+  background: linear-gradient(105deg, var(--greeting-from), var(--greeting-to));
+  color: var(--greeting-ink);
+}
+
+/* The programme journey — "Month 3 of 6" as distance travelled rather than a
+   label. Sits on the band, so its track is white-at-low-alpha rather than a
+   token: it has to read against the gradient, not against the canvas. */
+.journey-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.25);
+  overflow: hidden;
+}
+.journey-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--greeting-ink);
+  transform-origin: left;
+  animation: journey-grow 900ms var(--ease-out-quart) both;
+}
+@keyframes journey-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Entrance for the dashboard cards. A short, small rise -- §10 budgets
+   150-250ms for state and bans bounce, so this is a fade with 8px of travel,
+   staggered by a custom property the caller sets. */
+@keyframes card-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.card-rise {
+  animation: card-rise 260ms var(--ease-out-quart) both;
+  animation-delay: var(--rise-delay, 0ms);
+}
+
 /* §10: reduce → "all of the above become instant or a plain crossfade."
    The animations resolve to their end state rather than being cancelled. */
 @media (prefers-reduced-motion: reduce) {
-  .btn, .control, .text-link { transition: none; }
-  .ribbon-mark, .pill-crossfade { animation-duration: 1ms; animation-delay: 0ms; }
+  .btn, .control, .text-link, .chevron-rotate { transition: none; }
+  .ribbon-mark, .ribbon-mark-celebrate, .pill-crossfade,
+  .journey-fill, .card-rise { animation-duration: 1ms; animation-delay: 0ms; }
 }

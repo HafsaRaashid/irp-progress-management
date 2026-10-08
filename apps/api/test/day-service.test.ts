@@ -4,6 +4,7 @@ import { createPrismaClient } from "../src/db/client.js";
 import { createEntryRepo } from "../src/db/entry-repo.js";
 import { createAbsenceRepo } from "../src/db/absence-repo.js";
 import { createBatchRepo } from "../src/db/batch-repo.js";
+import { createMentorRecordRepo } from "../src/db/mentor-record-repo.js";
 import { colomboInstant } from "../src/db/civil-date-map.js";
 import { createDayService } from "../src/services/day-service.js";
 import { resetDb } from "./helpers/db.js";
@@ -34,7 +35,8 @@ describe.skipIf(!dbUrl)("createDayService", () => {
   const entryRepo = createEntryRepo(prisma);
   const absenceRepo = createAbsenceRepo(prisma);
   const batchRepo = createBatchRepo(prisma);
-  const service = createDayService({ entryRepo, absenceRepo, batchRepo });
+  const mentorRecordRepo = createMentorRecordRepo(prisma);
+  const service = createDayService({ entryRepo, absenceRepo, batchRepo, mentorRecordRepo });
 
   beforeEach(async () => {
     await resetDb(prisma);
@@ -218,6 +220,51 @@ describe.skipIf(!dbUrl)("createDayService", () => {
     // implementation, not two independent ones to cross-check. No coverage is
     // lost by removing it: `listDays`'s own behaviour is already covered
     // directly, with richer fixtures, by the three tests above this one.
+  });
+
+  /**
+   * The mentor's per-day note (FR-19) is the only feedback channel a student
+   * can actually receive today: the cycle summary stays null until an
+   * evaluation exists, and O-5 blocks that indefinitely. It reaches the
+   * student attached to the day they wrote about, so it travels on DayView.
+   */
+  it("carries the mentor's note for a day, and null for a day without one", async () => {
+    const batch = await batchRepo.create({
+      name: "Batch Noted", startDate: civilDate("2026-05-10"), endDate: civilDate("2026-11-09"),
+    });
+    const mentor = await prisma.user.create({
+      data: { externalId: "noted-m", email: "noted-m@dev.local", displayName: "M", role: "ADMIN" },
+    });
+    const student = await prisma.user.create({
+      data: { externalId: "noted-s", email: "noted-s@dev.local", displayName: "S", role: "STUDENT" },
+    });
+    await batchRepo.enrol(student.id, batch.id, civilDate("2026-05-10"));
+
+    // Monday 2026-06-01 gets a note; Tuesday 2026-06-02 gets a RECORD WITH NO
+    // NOTE -- the case that must still read as null, not "".
+    await mentorRecordRepo.upsert({
+      studentId: student.id, date: civilDate("2026-06-01"),
+      attended: true, tasksCompleted: true, note: "caught up by evening",
+      recordedById: mentor.id,
+    });
+    await mentorRecordRepo.upsert({
+      studentId: student.id, date: civilDate("2026-06-02"),
+      attended: true, tasksCompleted: true,
+      recordedById: mentor.id,
+    });
+
+    const now = colomboInstant(civilDate("2026-06-15"), "10:00");
+    const days = await service.listDays(
+      student.id, civilDate("2026-06-01"), civilDate("2026-06-03"), now,
+    );
+
+    expect(days[0]!.mentorNote).toBe("caught up by evening");
+    // Recorded, but nothing written: null, NOT "". The student interface
+    // renders nothing at all for a day with no feedback rather than an empty
+    // panel, so these two cases must stay distinguishable.
+    expect(days[1]!.mentorNote).toBeNull();
+    // No record at all for 2026-06-03.
+    expect(days[2]!.mentorNote).toBeNull();
   });
 
   it("listDaysForStudents returns an empty map for an empty id list, without querying", async () => {

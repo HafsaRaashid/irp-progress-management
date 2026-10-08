@@ -5,6 +5,7 @@ import {
 import type { AbsenceRepo, AbsenceRecordShape } from "../db/absence-repo.js";
 import type { BatchRepo, EnrolmentRecord } from "../db/batch-repo.js";
 import type { EntryRepo, EntryRecord } from "../db/entry-repo.js";
+import type { MentorRecordRepo, MentorDayRecordShape } from "../db/mentor-record-repo.js";
 import type { DailyReportStatus } from "../generated/prisma/client.js";
 
 export interface DayView {
@@ -13,6 +14,16 @@ export interface DayView {
   reportId: string | null;
   reportStatus: DailyReportStatus | null;
   absenceReason: string | null;
+  /**
+   * The mentor's note for this day, when one was written (FR-19). Null when
+   * they recorded attendance without a note, or recorded nothing.
+   *
+   * Deliberately null rather than "" for the no-note case: the student
+   * interface renders NOTHING when there is no feedback, rather than an empty
+   * panel apologising for itself, so "no note" and "a note that is blank"
+   * must stay distinguishable.
+   */
+  mentorNote: string | null;
   entries: EntryRecord[];
 }
 
@@ -56,6 +67,7 @@ export function createDayService(deps: {
   entryRepo: Pick<EntryRepo, "listEntriesForStudents" | "listReportsForStudents">;
   absenceRepo: Pick<AbsenceRepo, "listForStudents">;
   batchRepo: Pick<BatchRepo, "listEnrolmentsForStudents">;
+  mentorRecordRepo: Pick<MentorRecordRepo, "listForStudents">;
 }): DayService {
   /** Group rows by studentId, seeding every requested id so no key is missing. */
   function groupBy<T extends { studentId: string }>(rows: T[], ids: string[]): Map<string, T[]> {
@@ -70,6 +82,7 @@ export function createDayService(deps: {
     absences: AbsenceRecordShape[],
     reports: { id: string; reportDate: CivilDate; status: DailyReportStatus }[],
     enrolments: EnrolmentRecord[],
+    mentorRecords: MentorDayRecordShape[],
     from: CivilDate,
     to: CivilDate,
     now: Date,
@@ -91,6 +104,11 @@ export function createDayService(deps: {
     }
     const absenceByDate = new Map(absences.map((a) => [a.date, a.reason]));
     const reportByDate = new Map(reports.map((r) => [r.reportDate, r]));
+    // A record can exist with a null note -- the mentor ticked attendance and
+    // wrote nothing. Map to the NOTE, not to the record, so "recorded, no
+    // note" and "no record at all" both land on null and the interface has a
+    // single thing to test.
+    const noteByDate = new Map(mentorRecords.map((r) => [r.date, r.note]));
 
     const days: DayView[] = [];
     for (let d = from; compareDates(d, to) <= 0; d = addDays(d, 1)) {
@@ -116,6 +134,7 @@ export function createDayService(deps: {
         reportId: report?.id ?? null,
         reportStatus: report?.status ?? null,
         absenceReason: absenceByDate.get(d) ?? null,
+        mentorNote: noteByDate.get(d) ?? null,
         entries: dayEntries,
       });
     }
@@ -132,24 +151,29 @@ export function createDayService(deps: {
       const ids = [...new Set(studentIds)];
       if (ids.length === 0) return new Map();
 
-      const [entries, absences, reports, enrolments] = await Promise.all([
+      // A FIFTH batched read, not a per-student one -- ADR-0018's whole point
+      // is that this path stays O(1) in queries however many students it is
+      // asked about.
+      const [entries, absences, reports, enrolments, mentorRecords] = await Promise.all([
         deps.entryRepo.listEntriesForStudents(ids, from, to),
         deps.absenceRepo.listForStudents(ids, from, to),
         deps.entryRepo.listReportsForStudents(ids, from, to),
         deps.batchRepo.listEnrolmentsForStudents(ids),
+        deps.mentorRecordRepo.listForStudents(ids, from, to),
       ]);
 
       const entriesBy = groupBy(entries, ids);
       const absencesBy = groupBy(absences, ids);
       const reportsBy = groupBy(reports, ids);
       const enrolmentsBy = groupBy(enrolments, ids);
+      const notesBy = groupBy(mentorRecords, ids);
 
       return new Map(
         ids.map((id) => [
           id,
           assemble(
             entriesBy.get(id) ?? [], absencesBy.get(id) ?? [], reportsBy.get(id) ?? [],
-            enrolmentsBy.get(id) ?? [], from, to, now,
+            enrolmentsBy.get(id) ?? [], notesBy.get(id) ?? [], from, to, now,
           ),
         ]),
       );

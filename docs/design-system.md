@@ -49,7 +49,10 @@ Recorded so these don't get reintroduced later as "improvements."
 OKLCH throughout. Strategy: **restrained** — tinted neutrals plus one accent, accent ≤10% of surface.
 
 Every pair below was verified with a WCAG contrast script against the sRGB conversion.
-**35 pairs across both themes pass; every token is in gamut.**
+**Every token is in gamut, and every pair the interface actually renders is gated on every
+test run — 30 pairs per theme, both themes, in `apps/web/test/theme-tokens.test.ts`.** That gate
+replaced a one-off script whose result ("35 pairs pass") nothing re-checked; it is proven red
+against a deliberately broken token, not merely asserted.
 
 ### 3.1 Light (default)
 
@@ -62,9 +65,27 @@ Every pair below was verified with a WCAG contrast script against the sRGB conve
 | `--line-strong` | `oklch(0.64 0.015 272)` | `#898c96` | **Control borders** — inputs, selects, checkboxes. Meets 1.4.11 at 3.37:1. |
 | `--ink` | `oklch(0.24 0.022 272)` | `#1b1f2a` | Primary text — 16.48:1 |
 | `--ink-muted` | `oklch(0.50 0.018 272)` | `#5f636e` | Labels, secondary text, placeholders — 6.01:1 |
-| `--primary` | `oklch(0.45 0.14 272)` | `#3c4ba2` | **Bistec slot.** Indigo ink. Primary actions, selection, focus — 7.71:1 |
-| `--primary-weak` | `oklch(0.95 0.022 272)` | `#e9eefe` | Selected rows, active nav, primary-tinted fills. |
+| `--primary` | `oklch(0.469 0.145 253.6)` | `#045aa9` | **Bistec slot — filled** (ADR-0030). Cerulean ink, sampled from the brand mark. Primary actions, selection, focus — 6.91:1 |
+| `--primary-weak` | `oklch(0.95 0.022 253.4)` | `#e5f0fd` | Selected rows, active nav, primary-tinted fills. |
 | `--brand-card` | — | `#ffffff` | The card behind the Bistec Hearts Academy logo. **Theme-invariant** — see below. |
+| `--greeting-from` | `oklch(0.95 0.024 253.4)` | `#e4f0ff` | The student greeting band's gradient, near stop. **That element only.** |
+| `--greeting-to` | `oklch(0.95 0.024 225)` | `#def2fb` | The same gradient's far stop. Clamped to 225° — see below. |
+
+**The greeting gradient is clamped to 215–240°, and the clamp is load-bearing.** The brand mark's
+own gradient runs 253°→223° and tails into a teal at **168.6°**, which is *inside* the 140–170°
+band reserved for `--st-ok`. A gradient that followed the asset honestly to its end would run into
+the status-green fence. `--greeting-from` therefore sits on `--primary`'s own hue so the band reads
+as the brand colour opening out, and `--greeting-to` stops at 225°.
+
+Both stops are gated against `--ink` and `--ink-muted` in `theme-tokens.test.ts`, because text sits
+directly on the gradient and a ratio against a gradient has no single value — which is also why §2
+bans gradient *text* outright. They belong to the greeting band and nothing else; anything else
+wanting a tinted fill is a new design decision, not a reuse of these.
+
+Adding them moved the dark table from 13 tokens to **15**, which `theme-tokens.test.ts` asserts.
+They sit *inside* the `dark-tokens` markers deliberately: outside, the two copies would escape the
+byte-identity check, and two unchecked copies of a themed value is the drift that check exists to
+prevent.
 
 `--brand-card` is the only token that is **identical in light and dark**, by never being
 overridden. **Why:** the brand lockup is a supplied asset whose own internal contrast is not
@@ -136,8 +157,10 @@ toward indigo, they do not warm.
 | `--line-strong` | `oklch(0.52 0.018 272)` | `#656974` |
 | `--ink` | `oklch(0.965 0.004 272)` | `#f2f3f6` |
 | `--ink-muted` | `oklch(0.74 0.014 272)` | `#a7aab4` |
-| `--primary` | `oklch(0.72 0.12 272)` | `#8a9ff0` |
-| `--primary-weak` | `oklch(0.30 0.045 272)` | `#262c45` |
+| `--primary` | `oklch(0.72 0.12 253.5)` | `#6da8ee` |
+| `--primary-weak` | `oklch(0.30 0.046 253.4)` | `#1d2f44` |
+| `--greeting-from` | `oklch(0.30 0.048 253.4)` | `#1c2f45` |
+| `--greeting-to` | `oklch(0.30 0.048 225)` | `#0c3340` |
 
 Status colours are **re-tuned, not reused** — see §3.2.
 
@@ -166,17 +189,34 @@ Dark is user-reachable as of ADR-0021, selected by `data-theme` on `<html>`:
   **native** controls — the `type="date"` calendar indicator, scrollbars, `<select>`
   dropdowns — which are drawn by the browser, not by us, and so are not reachable by any
   token. Without it, dark mode paints a dark calendar icon on a dark field. It sits outside
-  the `dark-tokens:start`/`:end` markers, since those are asserted to hold exactly the 13
+  the `dark-tokens:start`/`:end` markers, since those are asserted to hold exactly the 15
   tokens above.
 
 ### 3.4 The Bistec slot
 
-`--primary` is a placeholder pending the actual brand value. To swap: replace the single
-`--primary` token, re-derive `--primary-weak` at roughly `L 0.95 / C 0.022` on the same hue,
-and re-run the contrast check. Nothing else in the system references a brand colour directly.
+**The slot is filled** — `#045aa9`, `oklch(0.469 0.145 253.6)` ([ADR-0030](adr/0030-bistec-cerulean-as-the-brand-colour.md)).
+It is sampled from `apps/web/assets/hearts-academy-mark.png`: its largest single cluster, 15.2%
+of the mark's opaque pixels. The swap procedure is unchanged and still applies to any future
+change: replace the single `--primary` token, re-derive `--primary-weak` at roughly
+`L 0.95 / C 0.022` on the same hue, and re-run the gate. Nothing else in the system references
+a brand colour directly.
 
 **Constraint on any replacement:** the hue must stay clear of 20–70° (red/amber — reserved
 for `missed`/`late`) and 140–170° (green — reserved for `ok`).
+
+**And it must clear 4.5:1, not 3:1.** `--primary` is drawn as **text**, not only as a fill —
+`.nav-item[data-active]`, `.chip[aria-current]`, `.text-link:hover`, and `--st-review`. This is
+the constraint that is easy to miss and it is what ruled out the obvious choice: the heart is a
+*gradient* running 253°→223°, and its brighter mid-blue `#0188c5` measures **3.94:1** on white.
+A by-eye sample of the same region, `#1C8FD1`, measures **3.56:1**. Both are genuinely in the
+asset; neither is legible as ink. The gradient's deep end is what passes, which is why the brand
+colour is the dark cerulean rather than the bright one the logo reads as at a glance.
+
+**The two brand assets are sampled separately and their cluster shares are not interchangeable.**
+`hearts-academy-mark.png` and `hearts-academy-lockup.png` have different compositions — the
+lockup includes the green wordmark at 20.1%, which the mark does not contain at all. Quoting a
+share from one against a hex from the other has already produced two wrong provenance claims
+during this slice. Name the file whenever you cite a percentage.
 
 ---
 
@@ -368,6 +408,24 @@ Every status carries **a glyph and a word**, never colour alone.
 Same ribbon, personal marks. The submission box is the primary action and sits immediately
 below it. No score, no rank, no other students, anywhere on this surface.
 
+**Two student routes, not three** ([ADR-0031](adr/0031-two-student-pages-feedback-with-the-history.md)):
+
+| Route | Holds |
+|---|---|
+| `/` **Today** | greeting band · ribbon · counts + streak chip · composer · recent days · mark absent |
+| `/my-progress` **My progress** | "Month N of 6" pips · day-by-day history · strengths and areas |
+
+**This is not a reversal of this section.** The composer stays immediately below the ribbon, which
+is what §8.2 specifies and what the mock below still shows. Only the *feedback band* moved — to the
+history that explains it, where it also stops being a permanently empty nav destination while
+**O-5** leaves `strengthsAndWeaknesses` null for every student.
+
+The page opens with a **greeting band** rather than a bare "Today" title — a time-of-day salutation
+and the Colombo civil date, on the §3.1 gradient. It lives in the page, never in the shared topbar,
+whose contract §6 fixes at "brand and name, nothing else". Beside the counts sits a **streak chip**
+("12 of 14 days submitted"): the student's own count, with days *elapsed* as its denominator, no
+window named, and nothing comparative anywhere in it (FR-30).
+
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │  Month 2 of 6 · Cycle 2 · 10 Jul – 9 Aug                               │
@@ -417,7 +475,7 @@ Restrained, with a few deliberate moments. 150–250ms, ease-out-quart. No bounc
 | Moment | Behaviour |
 |---|---|
 | Ribbon load | Marks fill left→right, staggered, **≤250ms total**. It's a list stagger, not a page-load sequence — the register drawing its own marks. |
-| Submission lands | The student's day mark fills. The action visibly enters the register. This is the one delight moment in the system. |
+| Submission lands | The student's day mark fills, with a single small overshoot and settle. The action visibly enters the register. This is the one delight moment in the system. **Implemented**, opt-in via `CycleRibbon`'s `celebrate` prop (ADR-0032) and set on the student instance only — the mentor's ribbon keeps the plain load animation. It **replaces** the per-mark rise rather than stacking on it, and the ≤250ms load-stagger budget above is separate and unchanged. |
 | Review state change | 180ms crossfade on the status pill. |
 | Everything else | 150ms, state only. |
 
@@ -464,7 +522,6 @@ Non-negotiable, verified rather than assumed.
 
 | # | Item | Effect |
 |---|---|---|
-| — | **Bistec brand colour** | `--primary` is a placeholder. One-token swap; see §3.4 for hue constraints. |
 | — | **§6's topbar batch switcher is not built** | `Batch 12 ▾` would have appeared in the §6 frame with no data behind it: `User` in `spec/openapi.yaml` carries no batch, and a mentor holds several, so one name in a global slot would be wrong for the primary audience. Batch selection is per-page instead, via the Roster and Cycles chips. Revisit only if a global batch context is ever genuinely needed; it would need a spec change first. |
 | O-6 | Rubric criteria wording | Blocks the evaluation surface layout — five criteria need real labels before that screen is designed. |
 | O-7 | Absence/lateness penalty | `--st-absent` is neutral on the stated assumption. If leadership rules that absence penalises the score, this token and its copy change. |
@@ -483,5 +540,8 @@ Each names at least three rejected alternatives:
 | [0003](adr/0003-cycle-ribbon-as-fr-28-summary.md) | Cycle ribbon as the FR-28 summary surface |
 | [0020](adr/0020-collapsed-ribbon-key-on-the-mentor-dashboard.md) | A collapsed, mentor-only key for the cycle ribbon (§7) |
 | [0021](adr/0021-theme-persistence-by-cookie.md) | Theme persistence by server-readable cookie; dark becomes user-reachable (§3.3) |
+| [0030](adr/0030-bistec-cerulean-as-the-brand-colour.md) | The Bistec slot filled with the sampled cerulean, and the contrast gate that enforces it (§3.1, §3.3, §3.4) |
+| [0031](adr/0031-two-student-pages-feedback-with-the-history.md) | Two student routes; the feedback band lives with the history (§8.2) |
+| [0032](adr/0032-opt-in-expressive-props.md) | Expressive behaviour as opt-in props, defaulted off, named for behaviour (§9) |
 
 Changing anything in §3–§7 means amending the ADR that governs it, not just this file.
