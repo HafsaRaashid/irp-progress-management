@@ -9,6 +9,7 @@ import { SectionLabel } from "@/components/ui/section-label";
 import { CountsRow } from "@/components/ui/counts-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatCivilDateLabel } from "./format-civil-date";
+import { salutationFor } from "./greeting-band";
 
 /**
  * FR-28, must-ship (SC-4). The warm zone: one cycle ribbon per batch, with
@@ -66,10 +67,41 @@ export async function MentorToday({ displayName, role }: { displayName: string; 
     })),
   );
 
+  // The day's figures rolled across every batch, for the band below. Reads
+  // only dashboards that loaded: a batch whose call failed renders its own
+  // alert and must not drag the headline to a wrong, smaller number.
+  const loaded = dashboards.flatMap(({ result }) => (result.data === undefined ? [] : [result.data]));
+  const submittedToday = loaded.reduce((n, d) => n + d.counts.submitted, 0);
+  const enrolledToday = loaded.reduce((n, d) => n + d.counts.enrolled, 0);
+  const bandDate = loaded[0]?.date;
+
   return (
     <div>
       <PageTitle>Today</PageTitle>
       {identity}
+
+      {/*
+        The mentor surfaces carried no colour at all until now -- every
+        brand moment in the app was on the student's home. Same band, same
+        drifting brand light, carrying the one figure a mentor opens this
+        page for (FR-28's "N of M submitted") instead of a greeting alone.
+      */}
+      <div className="greeting-band mb-6">
+        <h2 className="text-2xl font-bold" style={{ letterSpacing: "-0.02em" }}>
+          {salutationFor(new Date())}
+        </h2>
+        {bandDate !== undefined && (
+          <p className="mt-1 text-sm" style={{ opacity: 0.85 }}>
+            {formatCivilDateLabel(bandDate)}
+          </p>
+        )}
+        {enrolledToday > 0 && (
+          <p className="mt-4 text-lg font-semibold">
+            {submittedToday} of {enrolledToday} submitted across{" "}
+            {loaded.length === 1 ? "this batch" : `${String(loaded.length)} batches`}
+          </p>
+        )}
+      </div>
 
       <div className="flex flex-col gap-6">
         {dashboards.map(({ batch, result }) => {
@@ -106,9 +138,9 @@ export async function MentorToday({ displayName, role }: { displayName: string; 
                       text: `${String(d.counts.submitted)} of ${String(d.counts.enrolled)} submitted`,
                       testId: `submitted-count-${batch.id}`,
                     },
-                    { tone: "late", text: `${String(d.counts.late)} late`, testId: `late-count-${batch.id}` },
-                    { tone: "absent", text: `${String(d.counts.absent)} absent`, testId: `absent-count-${batch.id}` },
-                    { tone: "missed", text: `${String(d.counts.missed)} missed`, testId: `missed-count-${batch.id}` },
+                    { tone: "late", count: d.counts.late, text: `${String(d.counts.late)} late`, testId: `late-count-${batch.id}` },
+                    { tone: "absent", count: d.counts.absent, text: `${String(d.counts.absent)} absent`, testId: `absent-count-${batch.id}` },
+                    { tone: "missed", count: d.counts.missed, text: `${String(d.counts.missed)} missed`, testId: `missed-count-${batch.id}` },
                     ...(d.extraCount > 0
                       ? [{ tone: "muted" as const, text: `+${String(d.extraCount)} extra this cycle` }]
                       : []),

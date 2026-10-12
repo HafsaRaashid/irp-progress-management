@@ -192,10 +192,10 @@ export async function StudentToday({ displayName, role }: { displayName: string;
                 */}
                 <CountsRow
                   items={[
-                    { tone: "ok", text: `${String(dashboard.summary.onTime)} on time` },
-                    { tone: "late", text: `${String(dashboard.summary.late)} late` },
-                    { tone: "absent", text: `${String(dashboard.summary.absent)} absent` },
-                    { tone: "missed", text: `${String(dashboard.summary.missed)} missed` },
+                    { tone: "ok", count: dashboard.summary.onTime, text: `${String(dashboard.summary.onTime)} on time` },
+                    { tone: "late", count: dashboard.summary.late, text: `${String(dashboard.summary.late)} late` },
+                    { tone: "absent", count: dashboard.summary.absent, text: `${String(dashboard.summary.absent)} absent` },
+                    { tone: "missed", count: dashboard.summary.missed, text: `${String(dashboard.summary.missed)} missed` },
                     ...(dashboard.summary.extra > 0
                       ? [{ tone: "muted" as const, text: `+${String(dashboard.summary.extra)} extra` }]
                       : []),

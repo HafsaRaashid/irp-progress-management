@@ -265,7 +265,15 @@ export function ArchiveButton({ userId }: { userId: string }) {
 
   return (
     <form action={action} className="flex flex-col items-end gap-1">
-      <Button type="submit" variant="danger" loading={pending}>Archive</Button>
+      {/*
+        `quiet`, not `danger`. Archiving is a SOFT archive -- it sets
+        deletedAt, destroys nothing, and RestoreButton below undoes it in one
+        click (which is exactly why Restore exists). Red is for the
+        irreversible, and spending it here meant a directory of nine students
+        rendered nine red outlines down one column: the loudest thing on a
+        page where nothing was wrong.
+      */}
+      <Button type="submit" variant="quiet" loading={pending}>Archive</Button>
       {state !== null && "error" in state && (
         <p role="alert" className="text-sm" style={{ color: "var(--st-missed)" }}>
           {state.error}

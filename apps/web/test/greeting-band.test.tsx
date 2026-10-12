@@ -61,9 +61,15 @@ describe("GreetingBand", () => {
   });
 
   /** §12: the zone is named in the UI, never a bare local time. */
-  it("names the timezone", () => {
+  it("renders the Colombo civil date it was given, with no zone qualifier beside it", () => {
     render(<GreetingBand today="2026-10-06" seq={3} programmeMonths={6} motivation="18 days running." now={new Date("2026-10-06T03:00:00Z")} />);
-    expect(screen.getByText(/Colombo/)).toBeInTheDocument();
+    // The DATE is still resolved in Asia/Colombo and nowhere else, which is
+    // the invariant §12 actually protects, and it is unchanged. What went
+    // (2026-10-09) is the literal "· Colombo" printed beside it: every person
+    // in this programme is in one zone, so the label distinguished the date
+    // from nothing and read as noise on the page's opening line.
+    expect(screen.getByText(/6 October/)).toBeInTheDocument();
+    expect(screen.queryByText(/Colombo/)).not.toBeInTheDocument();
   });
 
   /**

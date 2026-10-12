@@ -9,7 +9,7 @@
    largest single cluster, 15.2% of the mark's opaque pixels.
 
    It is drawn as TEXT as well as fill — .nav-item[data-active],
-   .chip[aria-current], .text-link:hover, and --st-review — so it carries 4.5:1,
+   .chip[aria-current] and .text-link:hover — so it carries 4.5:1,
    not 3:1. That is why the logo's brighter mid-blue could not be used: #0188c5
    measures 3.94:1 on white and the eyeballed #1C8FD1 measures 3.56:1. Both are
    in the asset; neither is legible as ink.
@@ -56,7 +56,6 @@
   --st-late: #9f5c0c;
   --st-absent: #6d717e;
   --st-missed: #be2132;
-  --st-review: var(--primary);
 
   --radius-panel: 12px;
   --radius-control: 8px;
@@ -160,9 +159,6 @@
   --color-st-late: var(--st-late);
   --color-st-absent: var(--st-absent);
   --color-st-missed: var(--st-missed);
-  /* --st-review was the one status token with no Tailwind colour, so it was
-     reachable only through an inline style. Every other one has a --color-*. */
-  --color-st-review: var(--st-review);
   --font-sans: var(--font-jakarta);
   --font-mono: var(--font-plex-mono);
   /* docs/design-system.md §10 — the only sanctioned easing. 150ms state-only
