@@ -87,11 +87,11 @@ export async function MentorToday({ displayName, role }: { displayName: string; 
         page for (FR-28's "N of M submitted") instead of a greeting alone.
       */}
       <div className="greeting-band mb-6">
-        <h2 className="text-2xl font-bold" style={{ letterSpacing: "-0.02em" }}>
+        <h2 className="text-3xl font-semibold" style={{ letterSpacing: "-0.03em" }}>
           {salutationFor(new Date())}
         </h2>
         {bandDate !== undefined && (
-          <p className="mt-1 text-sm" style={{ opacity: 0.85 }}>
+          <p className="tabular mt-1 text-sm" style={{ opacity: 0.85 }}>
             {formatCivilDateLabel(bandDate)}
           </p>
         )}

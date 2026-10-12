@@ -48,13 +48,13 @@
      down to 168.6 degrees, which is INSIDE the 140-170 band reserved for
      --st-ok. Both stops are gated against --ink and --ink-muted in
      test/theme-tokens.test.ts. */
-  --greeting-from: #045aa9;
+  --greeting-from: #03386d;
   --greeting-to: #0079ad;
   --greeting-ink: #ffffff;
 
-  --st-ok: #267b4c;
-  --st-late: #9f5c0c;
-  --st-absent: #6d717e;
+  --st-ok: #0f6f62;
+  --st-late: #9a5807;
+  --st-absent: #5e6372;
   --st-missed: #be2132;
 
   --radius-panel: 12px;
@@ -109,7 +109,7 @@
     --ink-muted: #a7aab4;
     --primary: #6da8ee;
     --primary-weak: #1d2f44;
-    --st-ok: #65c98c;
+    --st-ok: #5fcdbb;
     --st-late: #eeac53;
     --st-absent: #9a9eaa;
     --st-missed: #ed7473;
@@ -135,7 +135,7 @@
   --ink-muted: #a7aab4;
   --primary: #6da8ee;
   --primary-weak: #1d2f44;
-  --st-ok: #65c98c;
+  --st-ok: #5fcdbb;
   --st-late: #eeac53;
   --st-absent: #9a9eaa;
   --st-missed: #ed7473;
@@ -421,6 +421,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .greeting-band {
   border-radius: var(--radius-panel);
   padding: 28px 32px;
+  /* Two stops, no motion. The light end is at its ceiling: #0079ad is the
+     brightest value white text still clears 4.5:1 on, and everything on
+     this band is white text. So the only way to make the sweep actually
+     READ as a sweep is to take the dark end deeper -- #03386d against
+     white is 11.4:1, which widens the visible range without putting a
+     single word at risk. Both stops stay on --primary's own hue (253 deg),
+     so it is the logo's blue getting deeper, not a new colour. */
   background: linear-gradient(105deg, var(--greeting-from), var(--greeting-to));
   color: var(--greeting-ink);
 }
