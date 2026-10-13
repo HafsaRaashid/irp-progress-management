@@ -306,6 +306,40 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   font-weight: 600;
 }
 
+/* The Cycles page's cycle picker: one long pill holding a round button per
+   cycle, so it reads as a single control rather than a row of loose chips.
+   A not-yet-started cycle is dimmed the way a disabled .nav-item is. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9999px;
+  background: var(--surface-sunk);
+}
+.segmented > * {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  transition: background-color 150ms var(--ease-out-quart), color 150ms var(--ease-out-quart);
+}
+.segmented > a:hover { color: var(--ink); background: var(--surface); }
+.segmented > [aria-current="page"],
+.segmented > [aria-current="page"]:hover {
+  background: var(--primary);
+  color: var(--surface);
+  font-weight: 600;
+}
+.segmented > [aria-disabled="true"] { opacity: 0.4; cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+  .segmented > * { transition: none; }
+}
+
 /* §9 asks for one vocabulary per element. Three pages inlined
    `color: --ink; text-decoration: underline` for an in-content link. */
 .text-link {

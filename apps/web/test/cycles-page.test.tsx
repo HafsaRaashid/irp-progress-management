@@ -121,6 +121,21 @@ describe("CyclesPage", () => {
     expect(screen.getByRole("link", { name: "Cycle 3" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("shows the whole programme as numbers, with cycles not yet started dimmed and not linked", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN);
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH] });
+    getBatchDashboardSummary.mockResolvedValue({ data: summary(), error: undefined });
+
+    render(await CyclesPage({ searchParams: Promise.resolve({ batchId: "b1" }) }));
+
+    expect(screen.getByRole("link", { name: "Cycle 3" })).toHaveTextContent(/^3$/);
+    for (const n of [4, 5, 6]) {
+      expect(screen.queryByRole("link", { name: `Cycle ${String(n)}` })).not.toBeInTheDocument();
+      expect(screen.getByLabelText(`Cycle ${String(n)}, not started`)).toHaveAttribute("aria-disabled", "true");
+    }
+  });
+
   it("keeps every started cycle reachable when browsing to an earlier one, not just the one selected (Finding 1)", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN);
     apiClient.mockResolvedValue({});
