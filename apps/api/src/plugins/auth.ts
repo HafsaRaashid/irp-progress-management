@@ -43,6 +43,7 @@ export const authPlugin = fp<AuthOptions>(
       const token = header.slice("Bearer ".length);
 
       let oid: unknown;
+      let email: unknown;
       // The key-getter is a separate failure domain from the token. A JWKS
       // endpoint outage is OUR fault (5xx); an unverifiable token is the
       // caller's (401). One catch around both reports an outage as "your token
@@ -84,6 +85,7 @@ export const authPlugin = fp<AuthOptions>(
           clockTolerance: "60s",
         });
         oid = payload.oid;
+        email = payload.email;
       } catch (cause) {
         if (keyRetrievalFailed) {
           req.log.error({ err: cause }, "JWKS key retrieval failed");
@@ -99,7 +101,18 @@ export const authPlugin = fp<AuthOptions>(
         throw new UnauthorizedError("The token is missing the oid claim.");
       }
 
-      const user = await opts.userRepo.findByExternalId(oid);
+      let user = await opts.userRepo.findByExternalId(oid);
+      // ADR-0035: a miss here is the common case for a legitimately
+      // registered person's FIRST sign-in — registration no longer asks an
+      // Admin to supply externalId, so the row starts with it unset. Bind it
+      // now, by email, rather than 403ing someone an Admin already
+      // registered. Every later request for this person hits the line
+      // above instead, so this fallback runs at most once per person.
+      if (!user) {
+        if (typeof email === "string" && email.length > 0) {
+          user = await opts.userRepo.bindExternalId(email, oid);
+        }
+      }
       if (!user) throw new ForbiddenError(); // spec §7: valid token, no record → 403
       req.user = user;
     });

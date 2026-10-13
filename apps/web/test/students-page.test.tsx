@@ -192,7 +192,6 @@ describe("StudentsPage", () => {
 
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new.mentor@bistecglobal.com" } });
     fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "New Mentor" } });
-    fireEvent.change(screen.getByLabelText("External id"), { target: { value: "oid-123" } });
     fireEvent.click(screen.getByRole("button", { name: "Register" }));
 
     await screen.findByRole("status");

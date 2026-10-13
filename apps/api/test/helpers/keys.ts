@@ -14,10 +14,16 @@ export async function getLocalKeySet(): Promise<JWTVerifyGetKey> {
   return createLocalJWKSet({ keys: [{ ...jwk, kid: KID, alg: "RS256", use: "sig" }] });
 }
 
-interface SignOpts { oid?: string; issuer?: string; audience?: string; expiresIn?: string; }
+interface SignOpts { oid?: string; email?: string; issuer?: string; audience?: string; expiresIn?: string; }
 
 export async function signToken(opts: SignOpts = {}): Promise<string> {
-  return new SignJWT({ oid: opts.oid ?? "oid-1" })
+  // email is optional and omitted by default: most existing tests sign in an
+  // already-bound identity, where auth.ts never reaches the bind-by-email
+  // fallback (ADR-0035) and the claim is irrelevant.
+  return new SignJWT({
+    oid: opts.oid ?? "oid-1",
+    ...(opts.email === undefined ? {} : { email: opts.email }),
+  })
     .setProtectedHeader({ alg: "RS256", kid: KID })
     .setIssuedAt()
     .setIssuer(opts.issuer ?? ISS)

@@ -1357,16 +1357,22 @@ components:
       title: UserCreate
       description: |
         Register a mentor or a student (FR-3). Students require an initial
-        enrolment; mentors must not carry one. The externalId is the Entra
-        object id (oid claim) the person will authenticate with.
-      required: [externalId, email, displayName, role]
+        enrolment; mentors must not carry one. externalId is the Entra object
+        id (oid claim) the person will authenticate with — omit it; it binds
+        itself automatically on that person's first successful sign-in,
+        matched by email (ADR-0035). Supplying it directly is only for a rare
+        manual override and is not exposed in the registration UI.
+      required: [email, displayName, role]
       additionalProperties: false
       properties:
         externalId:
           type: string
           minLength: 1
           maxLength: 200
-          description: Entra object id (oid) of the account.
+          description: |
+            Entra object id (oid) of the account. Omit this — it is bound
+            automatically on first sign-in (ADR-0035). Only set it directly
+            for a known, already-confirmed oid.
           examples:
             - 00000000-aaaa-bbbb-cccc-000000000001
         email:

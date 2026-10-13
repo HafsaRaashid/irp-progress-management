@@ -28,8 +28,18 @@ datasource db {
 /// A registered participant. FR-5: removal hides via deletedAt, never deletes.
 model User {
   id          String    @id @default(uuid())
-  externalId  String    @unique // Entra oid claim
-  email       String    @unique
+  // Entra oid claim. Null until this person's first successful sign-in
+  // (ADR-0035) — a bare nullable @unique is sufficient: Postgres treats every
+  // NULL as distinct in a unique index, so any number of pending rows coexist.
+  externalId  String?   @unique
+  // No `@unique` here: uniqueness is enforced case-insensitively instead, by
+  // a hand-written functional index (see the "case_insensitive_email"
+  // migration) — the same hand-written-index pattern as
+  // Enrolment_one_open_per_student, because Prisma cannot declare either
+  // kind of index. ADR-0035's bind-by-email match is case-insensitive
+  // (Entra's claim casing need not match what an Admin typed), so two rows
+  // differing only by case would let that match hit more than one row.
+  email       String
   displayName String
   role        Role
   deletedAt   DateTime? @db.Timestamptz(3)

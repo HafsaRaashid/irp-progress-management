@@ -74,33 +74,13 @@ export function RegisterForm({ batches }: { batches: BatchOption[] }) {
         />
       </label>
       {/*
-        The one field on this form nobody can guess the meaning of. It is
-        what apps/api matches the signed-in token's `oid` claim against
-        (spec/openapi.yaml: "Entra object id (oid) of the account"), NOT the
-        person's email and NOT the User row's own id -- and getting it wrong
-        produces a row that simply 403s forever at sign-in rather than any
-        visible error at registration time.
-
-        This hint is the INTERIM mitigation, not the fix: **O-22** proposes
-        registering by email and binding the real `oid` on first sign-in, so
-        nobody transcribes a GUID at all. That needs a migration (externalId
-        is non-nullable), an auth-path change and an ADR, and belongs with
-        the Entra cutover.
+        No "External id" field (ADR-0035, superseding O-22's interim hint
+        text). It used to be the one field on this form nobody could guess
+        the meaning of -- what apps/api matches the signed-in token's `oid`
+        claim against -- and a mistyped GUID produced a row that simply 403s
+        forever at sign-in with no visible error at registration time. It now
+        binds itself, by email, on that person's first successful sign-in.
       */}
-      <label className="flex flex-col gap-1">
-        <SectionLabel>External id</SectionLabel>
-        <input
-          name="externalId"
-          required
-          aria-label="External id"
-          aria-describedby="external-id-hint"
-          className={FIELD_CLASS}
-        />
-        <span id="external-id-hint" className="text-xs" style={{ color: "var(--ink-muted)" }}>
-          Their Microsoft Entra object ID (Azure portal → the user&apos;s profile → Object ID).
-          Not their email.
-        </span>
-      </label>
       {role === "Student" && (
         <>
           <label className="flex flex-col gap-1">

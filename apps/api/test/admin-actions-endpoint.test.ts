@@ -293,7 +293,9 @@ describe.skipIf(!dbUrl)(
       const res = await app.inject({
         method: "GET",
         url: `/api/v1/students/${s.id}/days`,
-        headers: bearer(await signToken({ oid: admin.externalId })),
+        // Non-null by construction: mentor() above always creates the row
+        // with a real externalId.
+        headers: bearer(await signToken({ oid: admin.externalId! })),
       });
 
       expect(res.statusCode).toBe(200);

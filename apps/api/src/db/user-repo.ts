@@ -9,7 +9,9 @@ function isUniqueViolation(err: unknown): boolean {
 
 export interface UserRecord {
   id: string;
-  externalId: string;
+  // Null until this person's first successful sign-in (ADR-0035) — bound
+  // automatically by email, never typed in at registration.
+  externalId: string | null;
   email: string;
   displayName: string;
   // Mirrors the generated Prisma `Role` enum. Unlike the DayStatus duplication in
@@ -27,12 +29,23 @@ export interface UserRepo {
   // lookup's).
   findById(id: string): Promise<(UserRecord & { deletedAt: Date | null }) | null>;
   // P2002 (externalId or email unique constraint) maps to DuplicateUserError.
+  // externalId is optional (ADR-0035): registration normally omits it and
+  // leaves the row pending until bindExternalId claims it on first sign-in.
   create(input: {
-    externalId: string;
+    externalId?: string;
     email: string;
     displayName: string;
     role: "ADMIN" | "STUDENT";
   }): Promise<UserRecord>;
+  // ADR-0035: on an oid miss, bind by email instead of asking a human to
+  // transcribe externalId at registration. Matches case-insensitively (the
+  // email index is defined the same way — see schema.prisma), and only ever
+  // claims a row that is still pending (externalId IS NULL) and not
+  // archived; an already-bound row, or no matching row at all, returns null
+  // and the caller falls through to its existing "no record" handling. A
+  // single UPDATE ... RETURNING keeps the claim atomic — two
+  // near-simultaneous first sign-ins can race, but at most one updates a row.
+  bindExternalId(email: string, externalId: string): Promise<UserRecord | null>;
   // `archived: false` -> deletedAt: null (active, the default); `archived:
   // true` -> deletedAt != null (the FR-5 archive view). `role` narrows
   // further when supplied.
@@ -102,6 +115,22 @@ export function createUserRepo(prisma: PrismaClient): UserRepo {
         id: u.id, externalId: u.externalId, email: u.email,
         displayName: u.displayName, role: u.role, deletedAt: u.deletedAt,
       }));
+    },
+
+    async bindExternalId(email, externalId) {
+      const rows = await prisma.$queryRaw<
+        { id: string; externalId: string; email: string; displayName: string; role: "ADMIN" | "STUDENT" }[]
+      >`
+        UPDATE "User"
+        SET "externalId" = ${externalId}
+        WHERE lower("email") = lower(${email})
+          AND "externalId" IS NULL
+          AND "deletedAt" IS NULL
+        RETURNING "id", "externalId", "email", "displayName", "role"
+      `;
+      const u = rows[0];
+      if (u === undefined) return null;
+      return { id: u.id, externalId: u.externalId, email: u.email, displayName: u.displayName, role: u.role };
     },
 
     async archive(id, now) {

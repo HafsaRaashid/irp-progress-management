@@ -81,7 +81,9 @@ export const DAY_RECORD_BODY = {
 
 export const USER_CREATE_BODY = {
   type: "object",
-  required: ["externalId", "email", "displayName", "role"],
+  // externalId is deliberately absent from `required` (ADR-0035): it binds
+  // itself to the real Entra oid on first sign-in, matched by email.
+  required: ["email", "displayName", "role"],
   additionalProperties: false,
   properties: {
     externalId: { type: "string", minLength: 1, maxLength: 200 },

@@ -86,6 +86,26 @@ describe.skipIf(!dbUrl)("Users: GET/POST /api/v1/users", () => {
     expect(created?.role).toBe("ADMIN");
   });
 
+  it("registers a mentor without externalId, leaving it pending (ADR-0035)", async () => {
+    await mentor("users-admin-caller-1b");
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/users",
+      headers: bearer(await signToken({ oid: "users-admin-caller-1b" })),
+      payload: {
+        email: "pending.mentor@bistecglobal.com",
+        displayName: "Pending Mentor",
+        role: "Admin",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json<UserDetailLike>();
+    const created = await prisma.user.findUnique({ where: { id: body.id } });
+    expect(created?.externalId).toBeNull();
+  });
+
   it("registers a student with 200 and creates an open enrolment atomically", async () => {
     await mentor("users-admin-caller-2");
     const b = await batch("Batch Users Endpoint 2");
