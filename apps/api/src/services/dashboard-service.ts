@@ -1,11 +1,12 @@
 import {
-  compareDates, cycleContaining, cycleFor, cycleWorkingDays,
-  firstEvaluatedCycleStart, isWeekday, previousWeekday, shiftCycle, toProgrammeDate,
+  batchPhase, compareDates, cycleAt, cycleBounds, cycleCount, cycleWorkingDays,
+  firstEvaluatedCycle, isWeekday, previousWeekday, toProgrammeDate,
   PROGRAMME_MONTHS,
   type CivilDate, type CycleBounds, type DayStatus,
 } from "@irp/core";
 import type { BatchRecord, BatchRepo, RosterEnrolment } from "../db/batch-repo.js";
 import type { DayService, DayView } from "./day-service.js";
+import { currentEnrolment } from "./student-cycle.js";
 import { BatchNotFoundError, InvalidCycleError } from "../domain/errors.js";
 
 export interface CycleView {
@@ -46,7 +47,6 @@ export interface CycleCounts {
   missed: number;
   pending: number;
   extra: number;
-  complianceRate: number | null;
 }
 
 export interface ReviewProgress {
@@ -137,11 +137,6 @@ export function reportedDay(requiredDays: CivilDate[], today: CivilDate): CivilD
   return chosen;
 }
 
-/** Four decimals — enough to distinguish 21/22 from 20/21, short enough to compare exactly in a test. */
-function round4(value: number): number {
-  return Math.round(value * 10_000) / 10_000;
-}
-
 /**
  * One student's cycle, counted from their already-classified days, clipped to
  * their enrolment interval(s) IN THIS BATCH.
@@ -168,14 +163,12 @@ function round4(value: number): number {
  * positive context. Close it in both places at once or not at all; fixing
  * only this one re-introduces the disagreement it would be fixing.
  *
- * // ASSUMPTION: O-7 — absence counts as accounted-for. O-7 is still open on
- * whether lateness or absence carries an automatic penalty; the PRD's stated
- * assumption is that it does not, and this is the one place that shows.
+ * There is no percentage rate here: the counts are the whole summary.
  */
 export function countCycle(days: DayView[], enrolments: EnrolmentInterval[]): CycleCounts {
   const counts: CycleCounts = {
     requiredDays: 0, settledDays: 0, onTime: 0, late: 0,
-    absent: 0, missed: 0, pending: 0, extra: 0, complianceRate: null,
+    absent: 0, missed: 0, pending: 0, extra: 0,
   };
   for (const day of days) {
     if (!isWeekday(day.date)) {
@@ -192,11 +185,6 @@ export function countCycle(days: DayView[], enrolments: EnrolmentInterval[]): Cy
       case "pending": counts.pending += 1; break;
       default: break; // future — reached by nobody yet
     }
-  }
-  if (counts.settledDays > 0) {
-    counts.complianceRate = round4(
-      (counts.onTime + counts.late + counts.absent) / counts.settledDays,
-    );
   }
   return counts;
 }
@@ -237,13 +225,18 @@ export function extraSlots(
 }
 
 export function createDashboardService(deps: {
-  batchRepo: Pick<BatchRepo, "getBatch" | "enrolmentsInRange" | "firstEnrolmentStart" | "listEnrolments">;
+  batchRepo: Pick<BatchRepo, "getBatch" | "enrolmentsInRange" | "listEnrolments">;
   dayService: Pick<DayService, "listDaysForStudents">;
 }): DashboardService {
-  /** The engine's cycle numbering for a batch (ADR-0019). Null before its first evaluated cycle. */
-  function cycleView(bounds: CycleBounds, batch: BatchRecord): CycleView {
+  /**
+   * The engine's cycle numbering for a batch (ADR-0019, ADR-0035): cycle 1
+   * starts on the batch's start date. Null only while `today` is still before
+   * the batch — there is no current cycle yet, though `bounds` still names the
+   * first one so the page has a window to show.
+   */
+  function cycleView(bounds: CycleBounds & { index: number }, batch: BatchRecord, today: CivilDate): CycleView {
     return {
-      seq: cycleFor(bounds.start, batch.startDate)?.index ?? null,
+      seq: batchPhase(batch, today) === "before" ? null : bounds.index,
       startDate: bounds.start,
       endDate: bounds.end,
       requiredDayCount: cycleWorkingDays(bounds).length,
@@ -271,7 +264,7 @@ export function createDashboardService(deps: {
       if (!batch) throw new BatchNotFoundError(batchId);
 
       const today = toProgrammeDate(now);
-      const bounds = cycleContaining(today);
+      const bounds = cycleAt(batch, today);
       const requiredDays = cycleWorkingDays(bounds);
       const { enrolments, byStudent } = await loadRoster(batchId, bounds, now);
 
@@ -311,7 +304,7 @@ export function createDashboardService(deps: {
         date,
         isFallbackDay: date !== today,
         dayNumber: days.findIndex((d) => d.date === date) + 1,
-        cycle: cycleView(bounds, batch),
+        cycle: cycleView(bounds, batch, today),
         counts,
         extraCount,
         days,
@@ -330,14 +323,13 @@ export function createDashboardService(deps: {
       const batch: BatchRecord = found;
 
       const today = toProgrammeDate(now);
-      const first = firstEvaluatedCycleStart(batch.startDate);
-      // The batch's own numbering for today. Null before its first evaluated
-      // cycle opens — there is no "current" cycle yet to default to or to
-      // validate an explicit request against.
-      const currentSeq = cycleFor(today, batch.startDate)?.index ?? null;
+      // The batch's own numbering for today. Null before the batch starts —
+      // there is no "current" cycle yet to default to or to validate an
+      // explicit request against. After the batch ends it is the last cycle.
+      const currentSeq = batchPhase(batch, today) === "before" ? null : cycleAt(batch, today).index;
 
       /** Load the roster/day data for `bounds` and shape the response. Shared by both branches below. */
-      async function summarise(bounds: CycleBounds, seq: number | null): Promise<BatchSummaryView> {
+      async function summarise(bounds: CycleBounds & { index: number }, seq: number | null): Promise<BatchSummaryView> {
         const { enrolments, byStudent } = await loadRoster(batchId, bounds, now);
 
         // enrolmentsInRange is ordered by displayName, so first-seen order is
@@ -357,7 +349,7 @@ export function createDashboardService(deps: {
 
         return {
           batch,
-          cycle: { ...cycleView(bounds, batch), seq },
+          cycle: { ...cycleView(bounds, batch, today), seq },
           currentSeq,
           students: [...seen.values()].map((e) => {
             const days = byStudent.get(e.studentId) ?? [];
@@ -376,21 +368,22 @@ export function createDashboardService(deps: {
 
       if (cycleSeq === undefined && currentSeq === null) {
         // Finding 1, Plan 7 fix wave: ADR-0019 says seq is nullable in EVERY
-        // response. Flooring the default to a fabricated Cycle 1 (the old
-        // behaviour) reported a *future* window here while batchToday
-        // correctly reported the CURRENT CALENDAR cycle with seq null for the
-        // same batch on the same day — two mentor pages disagreeing about
-        // "now". Match batchToday: report the current calendar cycle's
-        // bounds, honestly with no sequence, and whatever roster/compliance
-        // data that window actually has (empty or future-only, as the data
-        // dictates). An EXPLICIT `?cycle=` request in this state is
-        // unaffected and still validated/rejected below as before.
-        return summarise(cycleContaining(today), null);
+        // response. Flooring the default to a fabricated Cycle 1 reported a
+        // *future* window here while batchToday reported the same window
+        // with seq null — two mentor pages disagreeing about "now". Match
+        // batchToday: before the batch starts, report its first cycle's
+        // bounds honestly with no sequence. An EXPLICIT `?cycle=` request in
+        // this state is unaffected and still validated/rejected below.
+        return summarise(cycleAt(batch, today), null);
       }
 
       const seq = cycleSeq ?? currentSeq ?? 1;
       if (!Number.isInteger(seq) || seq < 1) {
         throw new InvalidCycleError(`Cycle ${String(seq)} is not a valid 1-based cycle sequence.`);
+      }
+      const last = cycleCount(batch);
+      if (seq > last) {
+        throw new InvalidCycleError(`Cycle ${String(seq)} does not exist — this batch has ${String(last)} cycles.`);
       }
       if (currentSeq !== null && seq > currentSeq) {
         throw new InvalidCycleError(
@@ -398,16 +391,27 @@ export function createDashboardService(deps: {
         );
       }
       if (currentSeq === null && seq > 1) {
-        throw new InvalidCycleError(`Cycle ${String(seq)} has not started — this batch has no evaluated cycle yet.`);
+        throw new InvalidCycleError(`Cycle ${String(seq)} has not started — this batch has not started yet.`);
       }
 
-      return summarise(cycleContaining(shiftCycle(first, seq - 1)), seq);
+      // In [1, last] by the checks above, so never null.
+      return summarise(cycleBounds(batch, seq)!, seq);
     },
 
     async studentDashboard(studentId, now) {
       const today = toProgrammeDate(now);
-      const bounds = cycleContaining(today);
-      const admission = await deps.batchRepo.firstEnrolmentStart(studentId);
+      // A student follows the calendar of the batch they are in TODAY, so a
+      // transfer moves them onto the new batch's cycles (ADR-0035). With no
+      // enrolment at all (a mentor) there is no batch to cut cycles from.
+      const enrolments = await deps.batchRepo.listEnrolments(studentId);
+      const admission = enrolments[0]?.startDate ?? null; // ordered by start date ascending
+      const current = currentEnrolment(enrolments, today);
+      const batch = current === null ? null : await deps.batchRepo.getBatch(current.batchId);
+
+      const cycle = batch === null ? null : cycleAt(batch, today);
+      const bounds: CycleBounds = cycle ?? { start: today, end: today };
+      const firstEvaluated = batch === null || admission === null ? null : firstEvaluatedCycle(batch, admission);
+
       const byStudent = await deps.dayService.listDaysForStudents(
         [studentId], bounds.start, bounds.end, now,
       );
@@ -417,14 +421,20 @@ export function createDashboardService(deps: {
       return {
         today,
         programmeMonths: PROGRAMME_MONTHS,
-        firstEvaluatedCycleStart: admission === null ? null : firstEvaluatedCycleStart(admission),
+        firstEvaluatedCycleStart: firstEvaluated?.start ?? null,
         cycle: {
-          // The programme clock runs from the student's FIRST enrolment, so a
-          // transfer never resets "Month N of 6" (spec §3, Enrolment).
-          seq: admission === null ? null : (cycleFor(today, admission)?.index ?? null),
+          // "Month N" counts from the first cycle the student is evaluated
+          // for (FR-27), not from the batch's cycle 1: a mid-cycle joiner's
+          // first full month is their Month 1.
+          seq:
+            batch === null || cycle === null || firstEvaluated === null || batchPhase(batch, today) === "before"
+              ? null
+              : cycle.index >= firstEvaluated.index
+                ? cycle.index - firstEvaluated.index + 1
+                : null,
           startDate: bounds.start,
           endDate: bounds.end,
-          requiredDayCount: cycleWorkingDays(bounds).length,
+          requiredDayCount: batch === null ? 0 : cycleWorkingDays(bounds).length,
         },
         days: days
           .filter((d) => isWeekday(d.date))
@@ -439,7 +449,7 @@ export function createDashboardService(deps: {
         // `{ startDate: CivilDate; endDate: CivilDate | null }` so both
         // `RosterEnrolment` and `EnrolmentRecord` satisfy it; do not duplicate
         // the counter.
-        summary: countCycle(days, await deps.batchRepo.listEnrolments(studentId)),
+        summary: countCycle(days, enrolments),
         strengthsAndWeaknesses: null,
       };
     },

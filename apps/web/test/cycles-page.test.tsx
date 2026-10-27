@@ -34,7 +34,7 @@ const summary = (over: Record<string, unknown> = {}) => ({
       student: { id: "s1", displayName: "Amaya Wickramasinghe", email: "amaya@dev.local" },
       counts: {
         requiredDays: 22, settledDays: 17, onTime: 13, late: 2, absent: 1,
-        missed: 1, pending: 1, extra: 2, complianceRate: 0.9412,
+        missed: 1, pending: 1, extra: 2,
       },
       reviewProgress: { submitted: 4, inReview: 3, evaluated: 10 },
     },
@@ -59,7 +59,7 @@ describe("CyclesPage", () => {
     expect(listBatches).not.toHaveBeenCalled();
   });
 
-  it("renders one row per student with the compliance percentage and the outcome split", async () => {
+  it("renders one row per student with the outcome split and no compliance column", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH] });
@@ -68,34 +68,10 @@ describe("CyclesPage", () => {
     render(await CyclesPage({ searchParams: Promise.resolve({ batchId: "b1" }) }));
 
     expect(screen.getByText("Amaya Wickramasinghe")).toBeInTheDocument();
-    expect(screen.getByText("94%")).toBeInTheDocument();
+    expect(screen.queryByText("Compliance")).not.toBeInTheDocument();
     expect(screen.getByTestId("counts-s1")).toHaveTextContent("13 on time");
     expect(screen.getByTestId("counts-s1")).toHaveTextContent("1 missed");
     expect(screen.getByTestId("extra-s1")).toHaveTextContent("+2 extra");
-  });
-
-  it("renders a dash, not 0%, when no day has settled", async () => {
-    getCurrentUserOrRedirect.mockResolvedValue(ADMIN);
-    apiClient.mockResolvedValue({});
-    listBatches.mockResolvedValue({ data: [BATCH] });
-    getBatchDashboardSummary.mockResolvedValue({
-      data: summary({
-        students: [{
-          student: { id: "s2", displayName: "Fresh Start", email: "fresh@dev.local" },
-          counts: {
-            requiredDays: 22, settledDays: 0, onTime: 0, late: 0, absent: 0,
-            missed: 0, pending: 0, extra: 0, complianceRate: null,
-          },
-          reviewProgress: { submitted: 0, inReview: 0, evaluated: 0 },
-        }],
-      }),
-      error: undefined,
-    });
-
-    render(await CyclesPage({ searchParams: Promise.resolve({ batchId: "b1" }) }));
-
-    expect(screen.getByTestId("compliance-s2")).toHaveTextContent("—");
-    expect(screen.queryByText("0%")).not.toBeInTheDocument();
   });
 
   it("shows the awaiting-evaluation state for every student — no scores exist in this release", async () => {

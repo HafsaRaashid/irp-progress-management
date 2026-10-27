@@ -123,7 +123,7 @@ describe("TodayPage role branches", () => {
         extraAfter: [],
         summary: {
           requiredDays: 22, settledDays: 17, onTime: 13, late: 2, absent: 1,
-          missed: 1, pending: 1, extra: 2, complianceRate: 0.9412,
+          missed: 1, pending: 1, extra: 2,
         },
         strengthsAndWeaknesses: null,
       },

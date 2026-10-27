@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { addDays, isWeekday, nextWeekday, previousWeekday, toProgrammeDate, type CivilDate } from "@irp/core";
+import { addDays, addMonths, isWeekday, nextWeekday, previousWeekday, toProgrammeDate, type CivilDate } from "@irp/core";
 import { buildTestServer } from "./helpers/build-test-server.js";
-import { resolveRange } from "../src/routes/me-days.js";
+import { createBatchRepo } from "../src/db/batch-repo.js";
 import { resetDb } from "./helpers/db.js";
 import { signToken } from "./helpers/keys.js";
 import { dbUrl } from "./helpers/require-db.js";
@@ -508,10 +508,16 @@ describe.skipIf(!dbUrl)(
         expect(day.entries[0]!.body).toBe("Wrote the student-days endpoint tests.");
       });
 
-      it("defaults to the current cycle when from/to are omitted", async () => {
+      it("defaults to the current cycle of the student's batch when from/to are omitted", async () => {
         const s = await student("rev-s2-student");
         await mentor("rev-s2-mentor");
-        const { from, to } = resolveRange();
+        // A batch that started ten days ago: today is in its first cycle, so
+        // the default `from` is the batch start (ADR-0035).
+        const to = toProgrammeDate(new Date());
+        const from = addDays(to, -10);
+        const repo = createBatchRepo(prisma);
+        const batch = await repo.create({ name: "Batch rev-s2", startDate: from, endDate: addDays(addMonths(from, 6), -1) });
+        await repo.enrol(s.id, batch.id, from);
 
         const res = await app.inject({
           method: "GET",

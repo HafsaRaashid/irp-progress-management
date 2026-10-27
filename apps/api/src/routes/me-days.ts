@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import {
-  civilDate, cycleContaining, toProgrammeDate,
+  civilDate, toProgrammeDate,
   addDays, compareDates,
+  type CivilDate,
 } from "@irp/core";
 import type { components } from "@irp/types";
 import type { DayService, DayView } from "../services/day-service.js";
@@ -30,10 +31,15 @@ export function toApiDay(v: DayView): ApiDaySummary {
 
 const MAX_RANGE_DAYS = 92;
 
-export function resolveRange(from?: string, to?: string, now = new Date()) {
+/**
+ * `cycleStart` is the default `from`: the start of the cycle the subject
+ * student is in, which depends on their batch's dates (ADR-0035) — so the
+ * caller resolves it (`DayService.currentCycleStart`) rather than this
+ * function guessing a calendar.
+ */
+export function resolveRange(cycleStart: CivilDate, from?: string, to?: string, now = new Date()) {
   const today = toProgrammeDate(now);
-  const cycle = cycleContaining(today);
-  const f = from === undefined ? cycle.start : civilDate(from);
+  const f = from === undefined ? cycleStart : civilDate(from);
   // Default `to` is today, not the cycle's end -- a day that hasn't happened
   // yet has nothing to submit, review, or attend, so neither the mentor
   // Review page nor a student's own history should default to including it.
@@ -69,7 +75,8 @@ export const meDaysRoutes: FastifyPluginAsync<{ dayService: DayService }> = asyn
     { schema: { querystring: DAYS_QUERY }, preHandler: [app.authenticate] },
     async (req): Promise<ApiDaySummary[]> => {
       const now = new Date();
-      const { from, to } = resolveRange(req.query.from, req.query.to, now);
+      const cycleStart = await opts.dayService.currentCycleStart(req.user!.id, toProgrammeDate(now));
+      const { from, to } = resolveRange(cycleStart, req.query.from, req.query.to, now);
       const days = await opts.dayService.listDays(req.user!.id, from, to, now);
       return days.map(toApiDay);
     },

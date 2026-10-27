@@ -192,8 +192,9 @@ paths:
         Days outside the caller's enrolment intervals also report `none` —
         no enrolment, no obligation — even when such a day is in the future.
 
-        Defaults to the current evaluation cycle (the 10th of the month to
-        the 9th of the next, Asia/Colombo) when `from`/`to` are omitted.
+        Defaults to the current evaluation cycle of the caller's batch (cut
+        from the batch's own start date, Asia/Colombo) when `from`/`to` are
+        omitted. `from` defaults to that cycle's first day and `to` to today.
       tags: [Submissions]
       parameters:
         - name: from
@@ -264,7 +265,8 @@ paths:
       description: |
         FR-29: the signed-in student's programme position ("Month N of 6"),
         their current cycle's day-by-day classification, and that cycle's
-        compliance figures.
+        outcome counts. The cycle is the one on the calendar of the batch the
+        caller is in today (ADR-0035).
 
         FR-30 by construction: the endpoint takes no student identifier and
         reads only the caller's own id from the validated token, so no
@@ -307,7 +309,6 @@ paths:
                       missed: 1
                       pending: 1
                       extra: 2
-                      complianceRate: 0.9412
                     strengthsAndWeaknesses: null
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -632,7 +633,7 @@ paths:
   /api/v1/batches/{id}/dashboard/summary:
     get:
       operationId: getBatchDashboardSummary
-      summary: Per-student compliance for one cycle
+      summary: Per-student outcome counts for one cycle
       description: |
         One row per student enrolled in the batch at any point during the
         cycle, with required-day outcomes, weekend Extra, and review progress.
@@ -640,8 +641,10 @@ paths:
 
         Cycles are addressed by their 1-based sequence within the batch,
         computed by the domain engine rather than read from the materialised
-        `Cycle` table (ADR-0019). A sequence beyond the current cycle is
-        rejected — a cycle that has not happened has nothing to summarise.
+        `Cycle` table (ADR-0019). Cycle 1 starts on the batch's start date and
+        the last is cut at its end date (ADR-0035). A sequence beyond the
+        current cycle, or beyond the batch's last, is rejected — a cycle that
+        has not happened or does not exist has nothing to summarise.
         No scores: none exist in this slice. Mentor only.
       tags: [Dashboards]
       parameters:
@@ -696,7 +699,6 @@ paths:
                           missed: 1
                           pending: 1
                           extra: 2
-                          complianceRate: 0.9412
                         reviewProgress:
                           inReview: 3
                           evaluated: 10
@@ -1104,8 +1106,9 @@ paths:
         mentor's own record through the schema `/me/days` shares with this
         endpoint's sibling.
 
-        Defaults to the current evaluation cycle (the 10th of the month to
-        the 9th of the next, Asia/Colombo) when `from`/`to` are omitted.
+        Defaults to the current evaluation cycle of the student's batch (cut
+        from the batch's own start date, Asia/Colombo) when `from`/`to` are
+        omitted. `from` defaults to that cycle's first day and `to` to today.
       tags: [Reviews]
       parameters:
         - name: id
@@ -1175,8 +1178,9 @@ paths:
         mentor names rather than the caller — one element per calendar day in
         the range, oldest first. Mentor only; a student token receives 403.
 
-        Defaults to the current evaluation cycle (the 10th of the month to
-        the 9th of the next, Asia/Colombo) when `from`/`to` are omitted.
+        Defaults to the current evaluation cycle of the student's batch (cut
+        from the batch's own start date, Asia/Colombo) when `from`/`to` are
+        omitted. `from` defaults to that cycle's first day and `to` to today.
       tags: [Reviews]
       parameters:
         - name: id
@@ -1693,7 +1697,7 @@ components:
         startDate:
           type: string
           format: date
-          description: Admission date — anchors cycle numbering (FR-6, FR-9).
+          description: The batch's start date — cycle 1 starts on it and every later cycle on the same day of the following months (FR-6, FR-9, ADR-0035).
           examples:
             - '2026-05-10'
         endDate:
@@ -1841,14 +1845,16 @@ components:
       type: object
       title: CycleView
       description: |
-        Which evaluation cycle a dashboard describes. Bounds are the fixed
-        10th-to-9th calendar window (FR-9). `seq`'s anchor depends on the
+        Which evaluation cycle a dashboard describes. Cycles are cut from the
+        BATCH's own dates (ADR-0035): cycle 1 starts on the batch's start date,
+        each later cycle starts on the same day of the month one month on, and
+        the last is cut at the batch's end date. `seq`'s anchor depends on the
         endpoint: for the two batch dashboards
         (`GET /batches/{id}/dashboard/today`, `GET /batches/{id}/dashboard/summary`)
-        it is the BATCH's own 1-based numbering, anchored on the batch's first
-        evaluated cycle (ADR-0019); for `GET /me/dashboard` it is anchored on
-        the CALLER's own first enrolment instead, deliberately, so
-        "Month N of 6" survives a transfer between batches. `null` means a
+        it is the BATCH's own 1-based numbering (ADR-0019); for
+        `GET /me/dashboard` it counts from the first cycle the CALLER is
+        evaluated for (FR-27), on the calendar of the batch they are in today,
+        so a transfer moves them onto the new batch's cycles. `null` means a
         different thing at each anchor — see `seq` below.
       required: [seq, startDate, endDate, requiredDayCount]
       additionalProperties: false
@@ -1861,23 +1867,23 @@ components:
           description: |
             The cycle's 1-based position. For `GET /batches/{id}/dashboard/today`
             and `GET /batches/{id}/dashboard/summary` this is the BATCH's own
-            numbering, null when the batch's first evaluated cycle has not
-            opened yet (FR-27). For `GET /me/dashboard` this is instead
-            anchored on the CALLER's own first enrolment — null there means
-            the caller has never been enrolled at all, not that a batch
-            hasn't started.
+            numbering, null only before the batch has started. For
+            `GET /me/dashboard` this counts from the first cycle the CALLER
+            is evaluated for (FR-27) — null there means the caller has no
+            enrolment, the batch has not started, or their first evaluated
+            cycle (after a mid-cycle join) has not opened yet.
           examples:
             - 3
         startDate:
           type: string
           format: date
-          description: First day of the cycle, inclusive — always a 10th.
+          description: First day of the cycle, inclusive — the batch's start date for cycle 1, the same day of each later month after that.
           examples:
             - '2026-07-10'
         endDate:
           type: string
           format: date
-          description: Last day of the cycle, inclusive — always a 9th.
+          description: Last day of the cycle, inclusive — the day before the next cycle starts, or the batch's end date for the last cycle.
           examples:
             - '2026-08-09'
         requiredDayCount:
@@ -2014,13 +2020,9 @@ components:
         required days only (FR-12); `extra` is weekend entries and is reported
         beside them, never inside them (FR-33).
 
-        `complianceRate` divides accounted-for days (on time + late + absent)
-        by SETTLED days — those whose outcome is final. Days still inside the
-        grace window and days not yet reached are in neither side, so the rate
-        does not dip merely because the afternoon is young. Absence counts as
-        accounted-for: it is recorded with a reason and carries no penalty
-        (assumption O-7).
-      required: [requiredDays, settledDays, onTime, late, absent, missed, pending, extra, complianceRate]
+        There is deliberately no percentage rate: the counts speak for
+        themselves.
+      required: [requiredDays, settledDays, onTime, late, absent, missed, pending, extra]
       additionalProperties: false
       properties:
         requiredDays:
@@ -2071,15 +2073,6 @@ components:
           description: Weekend entries in the cycle (FR-33). Never required, never penalised by its absence, never in a denominator.
           examples:
             - 2
-        complianceRate:
-          oneOf:
-            - type: number
-              minimum: 0
-              maximum: 1
-            - type: 'null'
-          description: Accounted-for settled days as a fraction, rounded to four decimals. Null when no day has settled yet — render a dash, not a zero.
-          examples:
-            - 0.9412
 
     ReviewProgress:
       type: object
@@ -2147,7 +2140,7 @@ components:
     BatchCycleSummary:
       type: object
       title: BatchCycleSummary
-      description: Every student enrolled in a batch during one cycle, with that cycle's compliance figures.
+      description: Every student enrolled in a batch during one cycle, with that cycle's outcome counts.
       required: [batchId, batchName, cycle, currentSeq, students]
       additionalProperties: false
       properties:
@@ -2175,9 +2168,9 @@ components:
             describes. A client uses this to render a complete cycle picker
             (1..currentSeq) no matter which cycle was requested, so browsing
             to an earlier cycle does not strand the picker without a way back
-            to the present. Null when the batch's first evaluated cycle has
-            not opened yet (ADR-0019), in which case there is no cycle to pick
-            from at all.
+            to the present. Once the batch has ended it is the batch's last
+            cycle. Null before the batch has started (ADR-0019), in which case
+            there is no cycle to pick from at all.
           examples:
             - 4
         students:
@@ -2234,7 +2227,7 @@ components:
             - type: string
               format: date
             - type: 'null'
-          description: The first cycle the student is evaluated for, from their earliest enrolment (FR-27). Null when the caller has never been enrolled.
+          description: The first cycle of the batch the student is in today that they are evaluated for, from their earliest enrolment (FR-27, ADR-0035). Null when the caller has no enrolment, or joined too late for any cycle of that batch.
           examples:
             - '2026-06-10'
         cycle:

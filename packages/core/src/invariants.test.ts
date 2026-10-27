@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   addDays,
+  addMonths,
   civilDate,
   classifyDay,
-  cycleContaining,
+  cycleAt,
+  cycleBounds,
+  cycleCount,
   cycleWorkingDays,
   isWeekday,
   nextWeekday,
@@ -40,26 +43,49 @@ describe("invariants across three years of dates", () => {
     }
   });
 
+  // One batch per start day of the month, so the 29th-31st clamping paths run.
+  const batches = Array.from({ length: 31 }, (_, i) => {
+    const startDate = civilDate(`2026-01-${String(i + 1).padStart(2, "0")}`);
+    return { startDate, endDate: addDays(addMonths(startDate, 6), -1) };
+  });
+
   it("cycleWorkingDays never contains a weekend", () => {
-    for (const date of all) {
-      for (const day of cycleWorkingDays(cycleContaining(civilDate(date)))) {
-        expect(isWeekday(day)).toBe(true);
+    for (const batch of batches) {
+      for (let i = 1; i <= cycleCount(batch); i += 1) {
+        for (const day of cycleWorkingDays(cycleBounds(batch, i)!)) {
+          expect(isWeekday(day)).toBe(true);
+        }
       }
     }
   });
 
-  it("every cycle runs from a 10th to a 9th", () => {
-    for (const date of all) {
-      const { start, end } = cycleContaining(civilDate(date));
-      expect(start.endsWith("-10")).toBe(true);
-      expect(end.endsWith("-09")).toBe(true);
+  it("every cycle starts on the batch's day of the month, clamped to the month's length", () => {
+    for (const batch of batches) {
+      const startDay = Number(batch.startDate.slice(8, 10));
+      for (let i = 1; i <= cycleCount(batch); i += 1) {
+        const { start } = cycleBounds(batch, i)!;
+        expect(start).toBe(addMonths(batch.startDate, i - 1));
+        expect(Number(start.slice(8, 10))).toBeLessThanOrEqual(startDay);
+      }
     }
   });
 
-  it("every cycle contains the date that produced it", () => {
-    for (const date of all) {
-      const { start, end } = cycleContaining(civilDate(date));
-      expect(start <= date && date <= end).toBe(true);
+  it("the first cycle starts on the batch start and the last ends on the batch end", () => {
+    for (const batch of batches) {
+      expect(cycleBounds(batch, 1)!.start).toBe(batch.startDate);
+      expect(cycleBounds(batch, cycleCount(batch))!.end).toBe(batch.endDate);
+    }
+  });
+
+  it("every date in a batch falls in exactly the cycle cycleAt reports", () => {
+    for (const batch of batches) {
+      for (let date = batch.startDate; date <= batch.endDate; date = addDays(date, 1)) {
+        const { start, end, index } = cycleAt(batch, date);
+        expect(start <= date && date <= end).toBe(true);
+        const containing = Array.from({ length: cycleCount(batch) }, (_, k) => cycleBounds(batch, k + 1)!)
+          .filter((c) => c.start <= date && date <= c.end);
+        expect(containing.map((c) => c.index)).toEqual([index]);
+      }
     }
   });
 

@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import {
-  addDays, canSubmitFor, civilDate, compareDates, cycleContaining, dayOfWeek, toProgrammeDate,
+  addDays, addMonths, canSubmitFor, civilDate, compareDates, dateParts, dayOfWeek, toProgrammeDate,
 } from "@irp/core";
 import { SEED_BATCH_NAMES } from "@irp/fixtures";
 import {
@@ -65,7 +65,12 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await expect(page.getByText("Tharindu Weerasinghe")).toHaveCount(0);
 
     const today = toProgrammeDate(new Date());
-    const currentCycle = cycleContaining(today);
+    // Batch B (the one asserted below) starts on the most recent 10th, so its
+    // current cycle starts there too -- cycles are cut from the batch's start
+    // date (ADR-0035), which the seed places on a 10th.
+    const { year, month, day } = dateParts(today);
+    const thisTenth = civilDate(`${String(year)}-${String(month).padStart(2, "0")}-10`);
+    const currentCycle = { start: day < 10 ? addMonths(thisTenth, -1) : thisTenth };
     // Most recent Saturday on/before today (dayOfWeek: 0 Sunday ... 6 Saturday).
     const daysSinceSaturday = (dayOfWeek(today) - 6 + 7) % 7;
     const lastSaturday = addDays(today, -daysSinceSaturday);

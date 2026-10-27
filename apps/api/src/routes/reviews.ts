@@ -116,7 +116,8 @@ export const reviewRoutes: FastifyPluginAsync<{
       requireAdmin(req);
       await resolveStudent(opts.userRepo, req.params.id);
       const now = new Date();
-      const { from, to } = resolveRange(req.query.from, req.query.to, now);
+      const cycleStart = await opts.dayService.currentCycleStart(req.params.id, toProgrammeDate(now));
+      const { from, to } = resolveRange(cycleStart, req.query.from, req.query.to, now);
       const days = await opts.dayService.listDays(req.params.id, from, to, now);
       return days.map(toApiDay);
     },
@@ -128,7 +129,9 @@ export const reviewRoutes: FastifyPluginAsync<{
     async (req): Promise<ApiDayRecord[]> => {
       requireAdmin(req);
       await resolveStudent(opts.userRepo, req.params.id);
-      const { from, to } = resolveRange(req.query.from, req.query.to, new Date());
+      const now = new Date();
+      const cycleStart = await opts.dayService.currentCycleStart(req.params.id, toProgrammeDate(now));
+      const { from, to } = resolveRange(cycleStart, req.query.from, req.query.to, now);
       const records = await opts.mentorRecordRepo.listForStudent(req.params.id, from, to);
       return records.map(toApiDayRecord);
     },

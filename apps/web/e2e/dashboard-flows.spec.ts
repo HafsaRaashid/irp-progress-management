@@ -142,7 +142,6 @@ test.describe("student My progress (FR-29, FR-30)", () => {
 
     await expect(page.getByRole("heading", { name: "My progress" })).toBeVisible();
     await expect(page.getByText(/Month \d of 6/)).toBeVisible();
-    await expect(page.getByText(/\d+% compliance/)).toBeVisible();
     // dev-student-1 is the fully compliant persona, so at least one on-time day.
     await expect(page.locator('[data-status="onTime"]').first()).toBeVisible();
   });

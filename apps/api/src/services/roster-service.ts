@@ -1,4 +1,4 @@
-import { cycleContaining, type CivilDate } from "@irp/core";
+import { compareDates, cycleAt, type CivilDate } from "@irp/core";
 import type { BatchRepo } from "../db/batch-repo.js";
 import type { MentorRecordRepo } from "../db/mentor-record-repo.js";
 import type { DayService, DayView } from "./day-service.js";
@@ -32,7 +32,14 @@ export function createRosterService(deps: {
       if (!batch) throw new BatchNotFoundError(batchId);
 
       const members = await deps.batchRepo.rosterMembers(batchId, date);
-      const cycle = cycleContaining(date);
+      // The batch's own cycle (ADR-0035). A date outside the batch clamps to
+      // its nearest cycle, which then does not bracket `date`, so the window
+      // is widened to include it — the roster for that date must still answer.
+      const batchCycle = cycleAt(batch, date);
+      const cycle = {
+        start: compareDates(date, batchCycle.start) < 0 ? date : batchCycle.start,
+        end: compareDates(date, batchCycle.end) > 0 ? date : batchCycle.end,
+      };
 
       // Known cost, accepted for now: 2 queries per student (a whole-cycle
       // listDays call, itself 4 queries internally, plus the mentor-record
@@ -46,7 +53,7 @@ export function createRosterService(deps: {
           ]);
           const day = cycleDays.find((d) => d.date === date);
           if (day === undefined) {
-            // cycleContaining(date) always brackets date, so listDays(cycle.start,
+            // The window above always brackets date, so listDays(cycle.start,
             // cycle.end) always includes it — this branch is unreachable in
             // practice and exists only to keep `day` non-optional for callers.
             throw new Error(`roster: day service omitted ${date} from its own containing cycle`);

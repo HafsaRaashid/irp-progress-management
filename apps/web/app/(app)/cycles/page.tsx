@@ -170,7 +170,6 @@ export default async function CyclesPage({
                   <Th numeric>Required</Th>
                   <Th>Outcomes</Th>
                   <Th>Extra</Th>
-                  <Th numeric>Compliance</Th>
                   <Th>Review</Th>
                   <Th>Evaluation</Th>
                 </tr>
@@ -205,13 +204,6 @@ export default async function CyclesPage({
                         §3.2, "distinguished by form, not colour". */}
                     <Td data-testid={`extra-${student.id}`} style={{ color: "var(--ink-muted)" }}>
                       <span className="tabular">{counts.extra > 0 ? `+${String(counts.extra)} extra` : "—"}</span>
-                    </Td>
-                    {/* A dash, not 0%: no settled day means no rate exists,
-                        and a zero would read as total failure. */}
-                    <Td numeric data-testid={`compliance-${student.id}`}>
-                      {counts.complianceRate === null
-                        ? "—"
-                        : `${String(Math.round(counts.complianceRate * 100))}%`}
                     </Td>
                     <Td style={{ color: "var(--ink-muted)" }}>
                       <span className="tabular">

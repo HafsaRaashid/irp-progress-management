@@ -29,7 +29,7 @@ function toApiCycleCounts(c: CycleCounts): components["schemas"]["CycleCounts"] 
   return {
     requiredDays: c.requiredDays, settledDays: c.settledDays, onTime: c.onTime,
     late: c.late, absent: c.absent, missed: c.missed, pending: c.pending,
-    extra: c.extra, complianceRate: c.complianceRate,
+    extra: c.extra,
   };
 }
 

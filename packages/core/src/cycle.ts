@@ -1,9 +1,5 @@
-import { civilDate, compareDates, dateParts, type CivilDate } from "./civil-date.js";
+import { addDays, addMonths, compareDates, dateParts, type CivilDate } from "./civil-date.js";
 import { workingDaysBetween } from "./weekday.js";
-
-/** Cycles run the 10th of one month to the 9th of the next (FR-9). */
-const CYCLE_START_DAY = 10;
-const CYCLE_END_DAY = 9;
 
 /**
  * The programme's length in evaluation cycles — the "of 6" in FR-29's
@@ -18,93 +14,118 @@ export interface CycleBounds {
   readonly end: CivilDate;
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
+/** The two dates a batch's cycles are cut from. Structural, so a `BatchRecord` satisfies it. */
+export interface BatchWindow {
+  readonly startDate: CivilDate;
+  readonly endDate: CivilDate;
 }
 
-function pad4(value: number): string {
-  return String(value).padStart(4, "0");
+export interface Cycle extends CycleBounds {
+  /** 1-based position within the batch. */
+  readonly index: number;
 }
 
-/** Build a CivilDate from year/month/day numbers, normalising month overflow. */
-function build(year: number, month: number, day: number): CivilDate {
-  let y = year;
-  let m = month;
-  while (m > 12) {
-    m -= 12;
-    y += 1;
+/**
+ * Where `date` sits against a batch's own dates.
+ *
+ * `after` is not `during` even though the last cycle still brackets it: a
+ * batch that has finished has no current cycle, only a last one.
+ */
+export type BatchPhase = "before" | "during" | "after";
+
+/**
+ * Cycles are cut from the BATCH's own dates (ADR-0035, superseding the fixed
+ * 10th-to-9th windows of FR-9's first reading).
+ *
+ * Cycle 1 starts on the batch's start date. Cycle k starts on the same
+ * day-of-month k-1 months later, and runs to the day before cycle k+1 starts.
+ * The last cycle is cut at the batch's end date, so it can be short, and no
+ * cycle starts after it.
+ *
+ * Every start is shifted from the batch's start date, never from the previous
+ * cycle's start: `addMonths` clamps to month length, and stepping from the
+ * previous result would let one short month (a batch starting on the 31st)
+ * drag every later cycle to the 28th.
+ */
+function startOf(batch: BatchWindow, index: number): CivilDate {
+  return addMonths(batch.startDate, index - 1);
+}
+
+/** How many cycles the batch holds: every one whose start is on or before its end date. */
+export function cycleCount(batch: BatchWindow): number {
+  if (compareDates(batch.endDate, batch.startDate) < 0) {
+    throw new RangeError(`Batch ends (${batch.endDate}) before it starts (${batch.startDate})`);
   }
-  while (m < 1) {
-    m += 12;
-    y -= 1;
-  }
-  return civilDate(`${pad4(y)}-${pad2(m)}-${pad2(day)}`);
+  let count = 1;
+  while (compareDates(startOf(batch, count + 1), batch.endDate) <= 0) count += 1;
+  return count;
 }
 
-/** The 10th-to-9th cycle that `date` falls inside. */
-export function cycleContaining(date: CivilDate): CycleBounds {
-  const { year, month, day } = dateParts(date);
-  // Before the 10th means we are still inside the cycle that opened last month.
-  const startMonth = day < CYCLE_START_DAY ? month - 1 : month;
-  // build() already normalises month over/underflow, so the end month can be
-  // derived from the same unnormalised inputs rather than re-parsing `start`.
-  return {
-    start: build(year, startMonth, CYCLE_START_DAY),
-    end: build(year, startMonth + 1, CYCLE_END_DAY),
-  };
+/** Cycle `index` (1-based) of the batch, or null when the batch has no such cycle. */
+export function cycleBounds(batch: BatchWindow, index: number): Cycle | null {
+  if (!Number.isInteger(index) || index < 1 || index > cycleCount(batch)) return null;
+  const start = startOf(batch, index);
+  const nextStart = startOf(batch, index + 1);
+  const unclippedEnd = addDays(nextStart, -1);
+  const end = compareDates(unclippedEnd, batch.endDate) > 0 ? batch.endDate : unclippedEnd;
+  return { start, end, index };
 }
 
-/** Move a cycle start forward or backward by whole cycles. */
-export function shiftCycle(start: CivilDate, months: number): CivilDate {
-  const { year, month } = dateParts(start);
-  return build(year, month + months, CYCLE_START_DAY);
+export function batchPhase(batch: BatchWindow, date: CivilDate): BatchPhase {
+  if (compareDates(date, batch.startDate) < 0) return "before";
+  if (compareDates(date, batch.endDate) > 0) return "after";
+  return "during";
+}
+
+/**
+ * The cycle `date` falls in. A date outside the batch is clamped to its
+ * nearest edge — the first cycle before the batch, the last after it — so a
+ * caller always gets a real cycle to show; pair it with `batchPhase` when the
+ * distinction matters.
+ */
+export function cycleAt(batch: BatchWindow, date: CivilDate): Cycle {
+  const count = cycleCount(batch);
+  const clamped =
+    compareDates(date, batch.startDate) < 0
+      ? batch.startDate
+      : compareDates(date, batch.endDate) > 0
+        ? batch.endDate
+        : date;
+  const from = dateParts(batch.startDate);
+  const to = dateParts(clamped);
+  // A month-count estimate, then nudged: the clamp in `addMonths` can put a
+  // cycle's start a few days either side of the naive day-of-month.
+  let index = Math.min(count, Math.max(1, (to.year - from.year) * 12 + (to.month - from.month) + 1));
+  while (index > 1 && compareDates(startOf(batch, index), clamped) > 0) index -= 1;
+  while (index < count && compareDates(startOf(batch, index + 1), clamped) <= 0) index += 1;
+  // `index` is in [1, count] by construction, so this is never null.
+  return cycleBounds(batch, index)!;
+}
+
+/**
+ * The first cycle of `batch` a student admitted on `admission` is evaluated
+ * for, or null when there is none.
+ *
+ * This implements only the JOINING half of FR-27. The full requirement is
+ * that a student who joins *or leaves* partway through a cycle is not
+ * evaluated for that cycle; here, admission counts only when it lands exactly
+ * on a cycle start, and otherwise evaluation begins with the following cycle.
+ * A student admitted on or before the batch's start is evaluated from cycle 1.
+ * A student admitted after the batch's last cycle began joins too late for any
+ * of it, so the answer is null.
+ *
+ * Departure is not modelled at all. A caller must NOT treat this as
+ * FR-27-complete: it will happily name a cycle for a student who left halfway
+ * through it.
+ */
+export function firstEvaluatedCycle(batch: BatchWindow, admission: CivilDate): Cycle | null {
+  if (compareDates(admission, batch.startDate) <= 0) return cycleBounds(batch, 1);
+  if (compareDates(admission, batch.endDate) > 0) return null;
+  const containing = cycleAt(batch, admission);
+  return admission === containing.start ? containing : cycleBounds(batch, containing.index + 1);
 }
 
 /** Every weekday inside a cycle. Weekends are absent, not marked (FR-12). */
 export function cycleWorkingDays(bounds: CycleBounds): CivilDate[] {
   return workingDaysBetween(bounds.start, bounds.end);
-}
-
-export interface Cycle extends CycleBounds {
-  /** 1-based position within the student's programme. */
-  readonly index: number;
-}
-
-/**
- * The first cycle a student is actually evaluated for.
- *
- * This implements only the JOINING half of FR-27. The full requirement is
- * that a student who joins *or leaves* partway through a cycle is not
- * evaluated for that cycle; here, admission counts only when it lands exactly
- * on a cycle start (the 10th), and otherwise evaluation begins with the
- * following cycle.
- *
- * Departure is not modelled at all. There is no enrolment record to hang a
- * departure date on until the data-model plan lands, and `cycleFor` takes no
- * departure argument. A caller must NOT treat `cycleFor` as FR-27-complete:
- * it will happily return a cycle for a student who left halfway through it.
- */
-export function firstEvaluatedCycleStart(admission: CivilDate): CivilDate {
-  const { start } = cycleContaining(admission);
-  return admission === start ? start : shiftCycle(start, 1);
-}
-
-/** Whole cycles between two cycle starts. */
-function cyclesBetween(from: CivilDate, to: CivilDate): number {
-  const fromParts = dateParts(from);
-  const toParts = dateParts(to);
-  return (toParts.year - fromParts.year) * 12 + (toParts.month - fromParts.month);
-}
-
-/**
- * The evaluated cycle that `date` falls in, for a student admitted on
- * `admission`. Returns null when `date` precedes the first evaluated cycle.
- */
-export function cycleFor(date: CivilDate, admission: CivilDate): Cycle | null {
-  const first = firstEvaluatedCycleStart(admission);
-  const bounds = cycleContaining(date);
-  if (compareDates(bounds.start, first) < 0) {
-    return null;
-  }
-  return { ...bounds, index: cyclesBetween(first, bounds.start) + 1 };
 }
