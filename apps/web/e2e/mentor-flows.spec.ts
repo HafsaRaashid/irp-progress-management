@@ -306,12 +306,12 @@ test.describe("mentor flows (dev-admin-1)", () => {
     const stamp = String(Date.now());
     const email = `e2e.throwaway.${stamp}@dev.local`;
     const displayName = `E2E Throwaway ${stamp}`;
-    const externalId = `e2e-throwaway-${stamp}`;
     const today = toProgrammeDate(new Date());
 
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Display name").fill(displayName);
-    await page.getByLabel("External id").fill(externalId);
+    // No "External id" field any more (ADR-0036) -- the row registers with
+    // externalId left null and binds itself on first sign-in by email.
     // exact: true throughout -- getByLabel's default substring match (case-
     // insensitive) makes "Batch" match CreateBatchForm's "Batch name"/"Batch
     // start date"/"Batch end date" too, and "Start date" matches "Batch
@@ -332,9 +332,10 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await switchToBatch(page, SEED_BATCH_NAMES.B);
     await expect(page.getByText(displayName)).toBeVisible();
 
-    // externalId here is NOT in SEED_EXTERNAL_IDS (@irp/fixtures), so
-    // db:seed's idempotent wipe will never remove this row -- archive it in
-    // this same test to keep the dev DB tidy, per the brief.
+    // This row's externalId stays null (never signed in, so never bound)
+    // and isn't in SEED_EXTERNAL_IDS (@irp/fixtures) either way, so
+    // db:seed's idempotent wipe will never remove it -- archive it in this
+    // same test to keep the dev DB tidy, per the brief.
     await page.goto("/students");
     await page.locator("tr").filter({ hasText: displayName }).getByRole("button", { name: "Archive" }).click();
     await page.getByRole("dialog", { name: `Archive ${displayName}` }).getByRole("button", { name: "Confirm archive" }).click();
