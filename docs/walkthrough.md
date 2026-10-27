@@ -46,8 +46,8 @@ list the seed and the dev sign-in picker both read.
 |---|---|---|
 | **Dev Student** | Batch 1 | Fully compliant. The clean case, and the only student you can sign in as. |
 | **Nuwan Perera** | Batch 1 | Habitually late — submits inside the grace window, so he is flagged but still counted. |
-| **Sachini Silva** | Batch 1 | Has genuinely missed weekdays. The only Batch 1 student whose compliance is below 100%. |
-| **Kavindu Jayasuriya** | Batch 1 | Records absences with reasons. Read his compliance figure carefully — see O-7 below. |
+| **Sachini Silva** | Batch 1 | Has genuinely missed weekdays, so her "missed" count is the one to point at. |
+| **Kavindu Jayasuriya** | Batch 1 | Records absences with reasons. Absence carries no automatic penalty (O-7) — see the gotcha below. |
 | **Tharindu Weerasinghe** | Batch 1 | **Archived.** Must not appear on any active roster or cycle list (FR-5). |
 | **Ishara Gunawardena** | Batch 2 | Compliant. |
 | **Dilini Rathnayake** | Batch 2 | Works weekends. Her entries drive the `+N extra` figure and the ribbon's half-width Extra slots (FR-33). |
@@ -79,10 +79,12 @@ You land here. One block per batch, each with a cycle ribbon and the figures ben
 **What to point at:**
 
 - **Batch 1 reads `Cycle 3`. Batch 2 reads `Cycle 1`. Both show the same calendar
-  dates.** This is the whole of FR-6 and FR-9 in one glance: cycle *boundaries* are fixed calendar
-  months (the 10th to the 9th) for everyone, but which cycle is a batch's *first* depends on when
-  it was admitted. Batch 1 started two cycles earlier, so it is on its third. Nobody has to explain
-  the rule; the two ribbons say it.
+  dates.** This is FR-6 and FR-9 in one glance: a batch's cycles are cut from *its own* start date
+  (ADR-0035) — cycle 1 starts the day the batch does, each later cycle one month on, and the last
+  is cut at the batch's end date. The two demo batches both start on a 10th, so their cycles
+  happen to line up; Batch 1 started two cycles earlier, so it is on its third. A batch that
+  started on the 15th would read 15th-to-14th instead. Nobody has to explain the rule; the two
+  ribbons say it.
 - **The ribbon is one bar per required day.** Weekends are absent by construction — the strip is
   five-a-week and grows a narrow `+` slot only where somebody actually worked a weekend. Look at
   Batch 2's ribbon for those slots; Dilini put them there.
@@ -137,41 +139,49 @@ picker.
 - The **Evaluation** column reads *Awaiting evaluation* for everyone, and will until Plan 9. That
   is a designed state, not a loading failure.
 
-### 5. Students
+### 5. Users (route `/students`, ADR-0034)
 
-`Students`. Transfer a student between batches, archive one, and **create a batch** — back here as
-a third panel stacked under `Transfer` (ADR-0023). **Register** is not here — see the next section.
+`Users` — the label as of 2026-10-08; the route is still `/students`, unchanged. Add a student or
+a mentor, create a batch, transfer a student between batches, and archive or restore anyone, all
+from one page: a single directory table (Name / Email / Role / Batch / Actions) with **All /
+Students / Mentors** filter chips above it, and **Add student** / **Create batch** as collapsed
+disclosures in the action row. Click **Transfer** on any student's row to open the one shared
+Transfer form, pre-filled with that student.
 
-- The archive view lists archived students read-only. Archiving revokes access without deleting
-  identity or history.
-- **Why `Create batch` came back.** ADR-0022 moved it to Settings along with `Register`, but with
-  only `Transfer` and `People` left on this page, `Transfer` — a short form — sat in the left half
-  of a two-column grid next to `People`'s much taller directory, leaving visible dead space below
-  it. ADR-0023 narrows ADR-0022's scope rather than reversing it: `Register` stays on Settings,
-  `Create batch` comes back here, and the left column now runs to a height comparable with `People`.
+- The archive view lists archived users read-only, with a Restore control. Archiving revokes
+  access without deleting identity or history.
+- **Why one table instead of a Students table and a separate mentor page.** Checked directly
+  against FR-4 (every Admin shares access across every batch — there is no mentor-to-batch
+  assignment to manage) and the mentor account's actual lifecycle operations (Register, Archive,
+  Restore — the same three a student account has): there is no mentor-specific capability for a
+  second page to exist around, so a Role column on one table is the accurate shape, not a
+  simplification.
+- **Why Register (and, earlier, Create batch) are back here.** ADR-0022 (2026-08-04) moved
+  Register to Settings because a page named "Students" minting mentor accounts was the wrong
+  mental model. ADR-0023 brought Create batch back almost immediately (a two-panel Settings/
+  Students split left Students with a visibly empty column). ADR-0034 (2026-10-08) finishes the
+  reversal: splitting one "manage who exists" task across two pages stopped paying for itself once
+  Create batch already proved the opposite was workable, so Register joined it, and the page took
+  the honest name — "Users" is what the API's own data model has called this all along.
 
-### 6. Settings (ADR-0021, ADR-0022, ADR-0023)
+### 6. Settings (ADR-0021, ADR-0034)
 
-`Settings`, pinned at the bottom of the sidebar. Two things happened here in this slice.
+`Settings`, pinned at the bottom of the sidebar. **Appearance — Light / Dark / Follow system** is
+the only section now, for every role — Register and Create batch both live on `Users` (previous
+section).
 
-- **Register a mentor or a student.** Moved off Students (ADR-0022): Students is the *management*
-  surface (Transfer, Create batch, People/archive), Settings is the *registration* surface.
-  Registering a student still takes a batch and a start date in the same step — there is no orphan
-  state where a student exists but belongs nowhere. `Create batch` itself is **not** here — ADR-0023
-  sent it back to Students once the two-panel Settings/Students split proved to leave Students with
-  a visibly empty column (see the previous section).
-- **Appearance — Light / Dark / Follow system.** This is worth demoing specifically because **dark
-  was unreachable before this slice.** ADR-0002 shipped dark tokens with full contrast audits, but
-  the only way to see them was to change the operating system's own theme — there was no in-app
-  switch. ADR-0021 makes it a first-class, persisted choice: pick **Dark**, and the whole app
-  repaints instantly (no reload, because the control writes the DOM directly), and the choice
-  survives a reload and a fresh sign-in because it is stored server-side in a cookie, not
-  `localStorage`. Every mentor screen in this walkthrough is worth a second pass in dark once you've
-  shown it in light. **One caveat, not fixed in this slice:** choosing Dark and then pressing the
-  browser's Back button can render the page back in the pre-choice theme until the next reload —
-  logged as O-16, see `handoff.md`.
-- **Settings is on both roles' sidebars.** Appearance belongs to everyone; the registration section
-  gates itself out for a Student rather than the page redirecting them away.
+- **Appearance is worth demoing specifically because dark was unreachable before Plan 7A shipped
+  this switch.** ADR-0002 shipped dark tokens with full contrast audits, but the only way to see
+  them was to change the operating system's own theme — there was no in-app switch. ADR-0021 makes
+  it a first-class, persisted choice: pick **Dark**, and the whole app repaints instantly (no
+  reload, because the control writes the DOM directly), and the choice survives a reload and a
+  fresh sign-in because it is stored server-side in a cookie, not `localStorage`. Every mentor
+  screen in this walkthrough is worth a second pass in dark once you've shown it in light. **One
+  caveat, not fixed in this slice:** choosing Dark and then pressing the browser's Back button can
+  render the page back in the pre-choice theme until the next reload — logged as O-16, see
+  `handoff.md`.
+- **Settings is on both roles' sidebars, and now renders identically for both** — there is no
+  remaining per-section gate to speak of, now that nothing on this page is mentor-only.
 
 ---
 
@@ -208,10 +218,10 @@ a third panel stacked under `Transfer` (ADR-0023). **Register** is not here — 
 `My progress` in the sidebar — renamed from `My month` ([ADR-0031](adr/0031-two-student-pages-feedback-with-the-history.md)),
 because the page now carries the programme position and the feedback as well as the history.
 
-- **"Month 3 of 6"** — the programme clock, which runs from the student's *first* enrolment. A
-  transfer does not reset it. Now also drawn as **pips** beside the heading; they are decorative
+- **"Month 3 of 6"** — the programme clock, counted from the first cycle the student is evaluated
+  for, on the calendar of the batch they are in *today* (ADR-0035). A transfer moves them onto the
+  new batch's calendar and numbering. Now also drawn as **pips** beside the heading; they are decorative
   (`aria-hidden`) because the heading already says the same thing in words.
-- The compliance rate for the month.
 - **"Strengths and areas to develop"**, which reads *"No evaluation yet — your first summary
   appears after your month closes."* Designed copy. Every student sees it in this release, because
   **O-5** blocks the AI provider decision and no evaluation exists yet. It moved here from the
@@ -281,18 +291,12 @@ slide.
 history is visible regardless of the hour, and come back to Today afterwards. Or seed the evening
 before.
 
-### 2. Kavindu has four absences and reads 100% compliance
+### 2. There is no compliance percentage
 
-This is not a bug — it is **assumption O-7 made visible on screen**, and it is the most important
-thing on the Cycles page to raise with the mentor.
-
-Compliance is `(on time + late + absent) / settled days`. Absence is *accounted for*: it was
-recorded with a reason, and the PRD's stated assumption is that it carries no automatic penalty.
-So a student can be absent four times and still show 100%.
-
-If the mentor expects absence to reduce the figure, O-7 needs to be answered and one line changes
-(`countCycle` in `apps/api/src/services/dashboard-service.ts`, marked `// ASSUMPTION: O-7`).
-**Ask.** Do not let this ship unexamined just because it is documented.
+The Cycles page and My progress show counts only (on time, late, absent, missed, extra). The
+percentage rate was removed because an absence's treatment in it (O-7) was an unconfirmed
+assumption, and the counts carry the same information without a number that implies a judgement.
+Whether absence should ever carry a penalty is still open (O-7).
 
 ### 3. "My month" opens with a run of empty future days
 

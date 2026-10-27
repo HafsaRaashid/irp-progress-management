@@ -8,12 +8,13 @@
  */
 import {
   addDays,
+  addMonths,
+  civilDate,
   compareDates,
-  cycleContaining,
+  dateParts,
   dayOfWeek,
   isWeekday,
   nextWeekday,
-  shiftCycle,
   toProgrammeDate,
   workingDaysBetween,
   type CivilDate,
@@ -115,9 +116,21 @@ function planFor(student: SeedStudent, dayIndex: number): DayPlan {
   }
 }
 
+/**
+ * The most recent 10th on or before `today`. Cycles are cut from each batch's
+ * own start date (ADR-0035), so the demo batches are free to start anywhere;
+ * they start on a 10th only so the seed reads like the programme's usual
+ * month boundary.
+ */
+function mostRecentTenth(today: CivilDate): CivilDate {
+  const { year, month, day } = dateParts(today);
+  const thisTenth = civilDate(`${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-10`);
+  return day < 10 ? addMonths(thisTenth, -1) : thisTenth;
+}
+
 export async function runSeed(prisma: PrismaClient, now: Date): Promise<void> {
   const today = toProgrammeDate(now);
-  const currentCycle = cycleContaining(today);
+  const currentCycleStart = mostRecentTenth(today);
 
   // ── wipe exactly what we own ─────────────────────────────────────────────
   const seedUsers = await prisma.user.findMany({ where: { externalId: { in: [...SEED_EXTERNAL_IDS] } } });
@@ -178,10 +191,10 @@ export async function runSeed(prisma: PrismaClient, now: Date): Promise<void> {
 
   // ── batches: A two cycles back, B at the current cycle start ────────────
   const batches = createBatchRepo(prisma);
-  const aStart = shiftCycle(currentCycle.start, -2);
-  const bStart = currentCycle.start;
-  const batchA = await batches.create({ name: SEED_BATCH_NAMES.A, startDate: aStart, endDate: addDays(shiftCycle(aStart, 6), -1) });
-  const batchB = await batches.create({ name: SEED_BATCH_NAMES.B, startDate: bStart, endDate: addDays(shiftCycle(bStart, 6), -1) });
+  const aStart = addMonths(currentCycleStart, -2);
+  const bStart = currentCycleStart;
+  const batchA = await batches.create({ name: SEED_BATCH_NAMES.A, startDate: aStart, endDate: addDays(addMonths(aStart, 6), -1) });
+  const batchB = await batches.create({ name: SEED_BATCH_NAMES.B, startDate: bStart, endDate: addDays(addMonths(bStart, 6), -1) });
   const batchIds = { A: batchA.id, B: batchB.id };
 
   // ── enrolments ───────────────────────────────────────────────────────────
@@ -193,7 +206,7 @@ export async function runSeed(prisma: PrismaClient, now: Date): Promise<void> {
       await batches.transfer(id, batchIds.B, transferDate);
     } else if (s.kind === "joiner") {
       // First weekday at least 3 days into the current cycle (FR-27 setup).
-      let join = addDays(currentCycle.start, 3);
+      let join = addDays(currentCycleStart, 3);
       while (!isWeekday(join)) join = addDays(join, 1);
       await batches.enrol(id, batchIds.B, join);
     } else {

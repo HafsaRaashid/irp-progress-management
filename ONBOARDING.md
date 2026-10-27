@@ -285,20 +285,23 @@ don't have to manually walk every day forward:
    other column on the row is date-scoped.
 3. **Review** → pick Chamodi Herath (or any recent Submitted report) → walk
    it Submitted → In Review → Evaluated, then note it locks.
-4. **Students** directory → show the archive flow, and that it's reversible
-   (restore, FR-5). Note that **Register** moved to **Settings** (ADR-0022),
-   while **Create batch** came back here as a third panel stacked under
-   **Transfer** (ADR-0023, which narrows ADR-0022's scope rather than
-   reversing it) — Students now carries **Transfer**, **Create batch**, and
-   **People**.
-5. **Settings** → **Register** a throwaway student or mentor, then switch to
-   **Appearance** and pick **Dark**. Dark was shipped with ADR-0002 but was
-   only reachable by changing the OS theme until this slice (ADR-0021) — it's
-   worth demoing precisely because it was previously unreachable. The repaint
-   is instant (no reload), and it survives a reload because the choice is a
-   server-readable cookie, not `localStorage`. Switch back to **Follow
-   system** (or **Light**) before continuing, so the rest of the walkthrough
-   isn't accidentally done in the wrong theme.
+4. **Users** (sidebar label since ADR-0034; route is still `/students`) → one
+   directory table (Name/Email/Role/Batch/Actions) with **All/Students/
+   Mentors** filter chips, **Add student** and **Create batch** as collapsed
+   disclosures, and a shared **Transfer** disclosure that pre-fills from
+   whichever row's Transfer link you click. Show the archive flow, and that
+   it's reversible (restore, FR-5). Register round-tripped through Settings
+   (ADR-0022) and back (ADR-0034, 2026-10-08) — there was never a distinct
+   "mentor management" surface to justify keeping it apart, so Register,
+   Create batch, Transfer, and the directory all live here together again.
+5. **Settings** → now **Appearance only**, for every role. Pick **Dark**.
+   Dark was shipped with ADR-0002 but was only reachable by changing the OS
+   theme until Plan 7A (ADR-0021) — it's worth demoing precisely because it
+   was previously unreachable. The repaint is instant (no reload), and it
+   survives a reload because the choice is a server-readable cookie, not
+   `localStorage`. Switch back to **Follow system** (or **Light**) before
+   continuing, so the rest of the walkthrough isn't accidentally done in the
+   wrong theme.
 6. **Today** dashboard → per-batch "N of M submitted" figures and the cycle
    ribbon. Open **"How to read this"** underneath: it names the eight ribbon
    marks and states the aggregation rule — each bar is the **worst** outcome in

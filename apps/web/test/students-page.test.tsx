@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import StudentsPage from "@/app/(app)/students/page";
 
 // Same pattern as roster-page.test.tsx / review-page.test.tsx: StudentsPage is
@@ -15,16 +15,34 @@ vi.mock("@/lib/api-client", () => ({ getCurrentUserOrRedirect, apiClient }));
 // admin-actions.ts (unmocked -- exercised for real, same as review-page.test's
 // treatment of review-actions.ts) imports createUser/createBatch/
 // transferStudent/archiveUser/restoreUser as a single module; page.tsx itself
-// calls listBatches/listUsers. All seven are mocked here so the whole tree
-// runs without a real client or network access -- createUser stays mocked
-// even though RegisterForm no longer renders on this page (ADR-0022, it moved
-// to Settings and stayed there), because admin-actions.ts's module-level
-// import still pulls it out of @irp/client. createBatch is mocked for the
-// same reason AND is exercised directly: CreateBatchForm moved to Settings
-// alongside Register in ADR-0022, then moved back here in ADR-0023.
+// calls listBatches/listUsers/getBatchRoster. All eight are mocked here so the
+// whole tree runs without a real client or network access. createUser and
+// createBatch are both exercised directly: RegisterForm and CreateBatchForm
+// round-tripped Settings (ADR-0022) and back (ADR-0023 for Create batch,
+// ADR-0034 for Register) and render on this page again, inside the Register /
+// Create batch dialogs (2026-10-09 revision: Dialog-wrapped buttons, not
+// collapsed <details>).
+
+/**
+ * jsdom ships `dialog:not([open]) { display: none; }` in its default
+ * stylesheet (a real UA default, not a jsdom quirk), but its
+ * HTMLDialogElement implementation is an empty stub -- `showModal()` does
+ * nothing, so a real click on a Dialog trigger never flips the `open`
+ * attribute the way a real browser does. Setting it directly here
+ * reproduces exactly what `showModal()` would have done, and is the only
+ * way these dialogs' contents become queryable in this environment --
+ * verified against the real browser separately in Playwright, where
+ * `showModal()` is fully implemented.
+ */
+function openDialog(ariaLabel: string) {
+  const dialog = document.querySelector(`dialog[aria-label="${ariaLabel}"]`);
+  if (dialog === null) throw new Error(`No <dialog aria-label="${ariaLabel}"> found`);
+  dialog.setAttribute("open", "");
+}
 const {
   listBatches,
   listUsers,
+  getBatchRoster,
   createUser,
   createBatch,
   transferStudent,
@@ -33,6 +51,7 @@ const {
 } = vi.hoisted(() => ({
   listBatches: vi.fn(),
   listUsers: vi.fn(),
+  getBatchRoster: vi.fn(),
   createUser: vi.fn(),
   createBatch: vi.fn(),
   transferStudent: vi.fn(),
@@ -42,6 +61,7 @@ const {
 vi.mock("@irp/client", () => ({
   listBatches,
   listUsers,
+  getBatchRoster,
   createUser,
   createBatch,
   transferStudent,
@@ -108,6 +128,10 @@ function searchParams(view?: string) {
 function defaultReads() {
   listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
   listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+  // The People table's Batch column reads one roster per batch (page.tsx) --
+  // unmocked, getBatchRoster is undefined and the call throws. Empty by
+  // default; the dedicated Batch-column test below overrides it.
+  getBatchRoster.mockResolvedValue({ data: [], error: undefined });
 }
 
 describe("StudentsPage", () => {
@@ -125,52 +149,167 @@ describe("StudentsPage", () => {
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
     listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByLabelText("Batch name")).toBeInTheDocument();
   });
 
-  it("still does NOT carry Register — that stayed in Settings (ADR-0022)", async () => {
+  it("carries Register again — it came back from Settings (ADR-0034)", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
     listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
 
-    // ADR-0023 supersedes only part of 0022. Register must not come back too.
-    expect(screen.queryByLabelText("Role")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Role")).toBeInTheDocument();
   });
 
-  it("keeps Transfer and People, which are the management half", async () => {
+  it("RegisterForm hides batch/startDate for the Mentor role and omits the enrolment key entirely", async () => {
+    // Relocated from settings-page.test.tsx (ADR-0034): the component's own
+    // behaviour, unchanged by the move, now exercised wherever it renders.
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
-    listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
-    listUsers.mockResolvedValue({ data: [STUDENT_DETAIL, MENTOR_DETAIL], error: undefined });
+    defaultReads();
+    createUser.mockResolvedValue({ error: undefined, data: { id: "m2" } });
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
+    openDialog("Register");
 
-    // getAllByText, not getByText: TransferForm's own submit button is also
-    // labelled "Transfer" (forms.tsx:219), so the plain text match the brief
-    // specified finds two elements and throws.
-    expect(screen.getAllByText("Transfer").length).toBeGreaterThan(0);
-    expect(screen.getByText("People")).toBeInTheDocument();
-    // People lists both roles read back — a student and a mentor.
+    // Student is the default role -- assert batch/start date are actually
+    // PRESENT first. Checking only the post-change Admin state would also
+    // pass against a form that never rendered these fields at all.
+    expect(screen.getByLabelText("Batch")).toBeInTheDocument();
+    expect(screen.getByLabelText("Start date")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Role"), { target: { value: "Admin" } });
+
+    expect(screen.queryByLabelText("Batch")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Start date")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new.mentor@bistecglobal.com" } });
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "New Mentor" } });
+    fireEvent.change(screen.getByLabelText("External id"), { target: { value: "oid-123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Register" }));
+
+    await screen.findByRole("status");
+
+    expect(createUser).toHaveBeenCalledTimes(1);
+    const callArgs = createUser.mock.calls[0]?.[0] as { body: Record<string, unknown> } | undefined;
+    expect(callArgs?.body.role).toBe("Admin");
+    expect(callArgs?.body).not.toHaveProperty("enrolment");
+  });
+
+  it("keeps Transfer (per-row) and the directory table, which are the management half", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    defaultReads();
+
+    // Default view (no `show`) is Students -- Dev Mentor is not expected here.
+    render(await StudentsPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByRole("button", { name: "Transfer" })).toBeInTheDocument();
     expect(screen.getByText("Amaya Perera")).toBeInTheDocument();
-    expect(screen.getByText("Dev Mentor")).toBeInTheDocument();
   });
 
-  it("sends a reader to Settings when nobody is registered yet", async () => {
+  it("shows a student's current batch from the roster read", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
+    listUsers.mockResolvedValue({ data: [STUDENT_DETAIL], error: undefined });
+    // STUDENT_DETAIL appears in BATCH's roster -- the Batch column reads this
+    // back as "Batch Aurora" rather than re-deriving it from User (which
+    // carries no batch field at all, spec/openapi.yaml's User schema).
+    getBatchRoster.mockResolvedValue({
+      data: [{ student: { id: STUDENT_DETAIL.id, displayName: STUDENT_DETAIL.displayName, email: STUDENT_DETAIL.email } }],
+      error: undefined,
+    });
+
+    render(await StudentsPage({ searchParams: Promise.resolve({}) }));
+
+    const studentRow = screen.getByText("Amaya Perera").closest("tr");
+    expect(studentRow).not.toBeNull();
+    expect(studentRow).toHaveTextContent("Batch Aurora");
+  });
+
+  it("points a reader at Register when nobody is registered yet", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
     apiClient.mockResolvedValue({});
     listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
     listUsers.mockResolvedValue({ data: [], error: undefined });
+    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
 
     render(await StudentsPage({ searchParams: Promise.resolve({}) }));
 
-    // The old hint pointed at a Register panel on this page. That panel is gone.
-    expect(screen.getByText(/Settings/)).toBeInTheDocument();
+    // Default filter is Students, so the empty state names students
+    // specifically rather than the old role-neutral "mentor or student".
+    expect(
+      screen.getByText("Use + Register above to add the first student."),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no Archive on the signed-in mentor's own row, and names it 'You'", async () => {
+    // The API refuses a self-archive with a 409 (SelfArchiveError), so the
+    // button could only ever produce an error message there.
+    getCurrentUserOrRedirect.mockResolvedValue({ ...ADMIN_USER, id: MENTOR_DETAIL.id });
+    apiClient.mockResolvedValue({});
+    defaultReads();
+
+    render(await StudentsPage({ searchParams: Promise.resolve({ show: "mentor" }) }));
+
+    const ownRow = screen.getByText("You").closest("tr");
+    expect(ownRow).not.toBeNull();
+    expect(within(ownRow!).queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+  });
+
+  it("still offers Archive on OTHER mentors' rows", async () => {
+    // The guard above must be scoped to the signed-in mentor alone -- a
+    // blanket "mentors cannot be archived" would be a different, wrong rule
+    // (FR-5 archives either role).
+    getCurrentUserOrRedirect.mockResolvedValue({ ...ADMIN_USER, id: "someone-else" });
+    apiClient.mockResolvedValue({});
+    defaultReads();
+
+    render(await StudentsPage({ searchParams: Promise.resolve({ show: "mentor" }) }));
+
+    expect(screen.queryByText("You")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeInTheDocument();
+  });
+
+  it("tells a reader filtered to an empty role, without a mentor leaking through", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listBatches.mockResolvedValue({ data: [BATCH], error: undefined });
+    listUsers.mockResolvedValue({ data: [MENTOR_DETAIL], error: undefined });
+    getBatchRoster.mockResolvedValue({ data: [], error: undefined });
+
+    render(await StudentsPage({ searchParams: Promise.resolve({ show: "student" }) }));
+
+    expect(screen.getByText("No students yet.")).toBeInTheDocument();
+    // The Mentor that exists is filtered OUT, not just the empty state shown
+    // alongside a table that still renders it.
+    expect(screen.queryByText("Dev Mentor")).not.toBeInTheDocument();
+  });
+
+  it("narrows the table to one role via the filter chips, with its own consistent action set", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    defaultReads();
+
+    render(await StudentsPage({ searchParams: Promise.resolve({ show: "mentor" }) }));
+
+    expect(screen.getByRole("link", { name: "Mentors" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("Dev Mentor")).toBeInTheDocument();
+    expect(screen.queryByText("Amaya Perera")).not.toBeInTheDocument();
+    // No "All" chip any more -- Students and Mentors are the only two.
+    expect(screen.queryByRole("link", { name: "All" })).not.toBeInTheDocument();
+    // Every visible row (just the one Mentor) carries the SAME action set --
+    // Archive only, no Transfer -- which is the whole point of dropping All.
+    expect(screen.queryByRole("button", { name: "Transfer" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive" })).toBeInTheDocument();
   });
 
   it("renders the problem detail when a read errors -- must not silently fall through to an empty state", async () => {
@@ -204,10 +343,10 @@ describe("StudentsPage", () => {
     expect(listUsers).toHaveBeenCalledWith({ client: {}, query: { archived: true } });
     expect(screen.getByText("Kavindu Silva")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
-    // Restore is the only action here: everything else on the Students page
+    // Restore is the only action here: everything else on the Users page
     // (transfer, archive, registration) needs an ACTIVE user.
     expect(screen.getAllByRole("button")).toHaveLength(1);
-    expect(screen.getByRole("link", { name: /Back to Students/ })).toHaveAttribute("href", "/students");
+    expect(screen.getByRole("link", { name: /Back to Users/ })).toHaveAttribute("href", "/students");
   });
 
   it("restores an archived user through the SDK and surfaces a failure", async () => {
@@ -241,10 +380,16 @@ describe("StudentsPage", () => {
 
     render(await StudentsPage({ searchParams: searchParams() }));
 
-    const archiveButtons = screen.getAllByRole("button", { name: "Archive" });
-    fireEvent.click(archiveButtons[0]!);
+    // Archive now asks first (a confirmation dialog), so opening it archives
+    // nothing; only Confirm archive calls the API.
+    const dialog = document.querySelector<HTMLDialogElement>('dialog[aria-label^="Archive "]');
+    if (dialog === null) throw new Error("No Archive confirmation dialog found");
+    expect(archiveUser).not.toHaveBeenCalled();
+    openDialog(dialog.getAttribute("aria-label")!);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm archive" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("A mentor cannot archive their own account.");
+    expect(archiveUser).toHaveBeenCalledTimes(1);
   });
 
   // Relocated from settings-page.test.tsx by Task 7 (ADR-0023): CreateBatchForm
@@ -257,6 +402,7 @@ describe("StudentsPage", () => {
     createBatch.mockResolvedValue({ error: undefined, data: BATCH });
 
     render(await StudentsPage({ searchParams: searchParams() }));
+    openDialog("Create batch");
 
     fireEvent.change(screen.getByLabelText("Batch name"), { target: { value: "Batch Bramble" } });
     fireEvent.change(screen.getByLabelText("Batch start date"), { target: { value: "2026-09-10" } });

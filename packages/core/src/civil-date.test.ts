@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, civilDate, compareDates, dayOfWeek } from "./civil-date.js";
+import { addDays, addMonths, civilDate, compareDates, dayOfWeek } from "./civil-date.js";
 
 describe("civilDate", () => {
   it("accepts a valid ISO calendar date", () => {
@@ -59,6 +59,40 @@ describe("addDays", () => {
   // "1999-01-02" here — validated input, silently wrong output.
   it("stays in the first century instead of remapping to 1900-1999", () => {
     expect(addDays(civilDate("0099-01-01"), 1)).toBe("0099-01-02");
+  });
+});
+
+describe("addMonths", () => {
+  it("keeps the day of the month", () => {
+    expect(addMonths(civilDate("2026-08-15"), 1)).toBe("2026-09-15");
+  });
+
+  it("rolls over a year boundary, forwards and backwards", () => {
+    expect(addMonths(civilDate("2026-12-15"), 1)).toBe("2027-01-15");
+    expect(addMonths(civilDate("2026-01-15"), -1)).toBe("2025-12-15");
+  });
+
+  it("clamps to the last day of a shorter month", () => {
+    expect(addMonths(civilDate("2026-01-31"), 1)).toBe("2026-02-28");
+    expect(addMonths(civilDate("2026-08-31"), 1)).toBe("2026-09-30");
+  });
+
+  it("clamps to 29 February in a leap year", () => {
+    expect(addMonths(civilDate("2028-01-31"), 1)).toBe("2028-02-29");
+  });
+
+  it("is not associative once a month clamps, which is why callers shift from one anchor", () => {
+    const start = civilDate("2026-01-31");
+    expect(addMonths(addMonths(start, 1), 1)).toBe("2026-03-28");
+    expect(addMonths(start, 2)).toBe("2026-03-31");
+  });
+
+  it("shifts by more than a year", () => {
+    expect(addMonths(civilDate("2026-08-15"), 18)).toBe("2028-02-15");
+  });
+
+  it("stays in the first century", () => {
+    expect(addMonths(civilDate("0099-01-15"), 1)).toBe("0099-02-15");
   });
 });
 

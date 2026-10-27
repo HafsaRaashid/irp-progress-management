@@ -6,6 +6,10 @@
 **Feeds:** a new plan, one branch and one PR, in `HafsaRaashid/irp-progress-management`
 **FRs:** FR-28, FR-29 (the surfaces this replaces) — see §2 for why this itself maps to no FR
 **Governs / closes:** reopens and supersedes [ADR-0003](../../adr/0003-cycle-ribbon-as-fr-28-summary.md)
+
+> **Update 2026-10-21:** "10th-to-9th cycle" below is the original wording. Cycles are now cut
+> from the batch's own start and end dates ([ADR-0035](../../adr/0035-cycles-are-cut-from-the-batch-dates.md)),
+> so a cycle runs from the batch's day-of-month to the day before it, not always 10th → 9th.
 **ADRs owed by this slice:** one — see §9
 
 ---

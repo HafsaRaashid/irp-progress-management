@@ -33,7 +33,8 @@ test.describe("dark theme renders every view", () => {
       ["/roster", "Roster"],
       ["/review", "Review"],
       ["/cycles", "Cycles"],
-      ["/students", "Students"],
+      // Label-only rename (ADR-0034, 2026-10-08) -- route stays /students.
+      ["/students", "Users"],
       ["/settings", "Settings"],
     ] as const) {
       await page.goto(path);

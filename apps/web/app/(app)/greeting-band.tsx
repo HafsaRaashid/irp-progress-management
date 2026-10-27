@@ -119,12 +119,16 @@ export function GreetingBand({
         {salutationFor(now)}
       </h1>
       {/*
-        §12: "Timestamps render in Asia/Colombo with the zone named in the UI,
-        never bare local time." Named once here, on the page's opening line,
-        which is what lets every figure below be read without a qualifier.
+        The zone qualifier is dropped (2026-10-09). §12 asks for "Asia/Colombo
+        with the zone named in the UI, never bare local time", and the DATE
+        itself still resolves there and nowhere else -- what went is only the
+        words "· Colombo" beside it. Every person using this system is in one
+        zone, so the label distinguished the date from nothing; it read as
+        noise on the page's opening line. If the programme ever runs across
+        zones, this is the line that has to come back.
       */}
       <p className="tabular mt-1 text-sm" style={{ opacity: 0.85 }}>
-        {formatCivilDateLabel(today)} · Colombo
+        {formatCivilDateLabel(today)}
       </p>
 
       <JourneyBar seq={seq} total={programmeMonths} />

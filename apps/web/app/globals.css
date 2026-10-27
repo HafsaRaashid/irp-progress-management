@@ -9,7 +9,7 @@
    largest single cluster, 15.2% of the mark's opaque pixels.
 
    It is drawn as TEXT as well as fill — .nav-item[data-active],
-   .chip[aria-current], .text-link:hover, and --st-review — so it carries 4.5:1,
+   .chip[aria-current] and .text-link:hover — so it carries 4.5:1,
    not 3:1. That is why the logo's brighter mid-blue could not be used: #0188c5
    measures 3.94:1 on white and the eyeballed #1C8FD1 measures 3.56:1. Both are
    in the asset; neither is legible as ink.
@@ -48,15 +48,14 @@
      down to 168.6 degrees, which is INSIDE the 140-170 band reserved for
      --st-ok. Both stops are gated against --ink and --ink-muted in
      test/theme-tokens.test.ts. */
-  --greeting-from: #045aa9;
+  --greeting-from: #03386d;
   --greeting-to: #0079ad;
   --greeting-ink: #ffffff;
 
-  --st-ok: #267b4c;
-  --st-late: #9f5c0c;
-  --st-absent: #6d717e;
+  --st-ok: #0f6f62;
+  --st-late: #9a5807;
+  --st-absent: #5e6372;
   --st-missed: #be2132;
-  --st-review: var(--primary);
 
   --radius-panel: 12px;
   --radius-control: 8px;
@@ -110,7 +109,7 @@
     --ink-muted: #a7aab4;
     --primary: #6da8ee;
     --primary-weak: #1d2f44;
-    --st-ok: #65c98c;
+    --st-ok: #5fcdbb;
     --st-late: #eeac53;
     --st-absent: #9a9eaa;
     --st-missed: #ed7473;
@@ -136,7 +135,7 @@
   --ink-muted: #a7aab4;
   --primary: #6da8ee;
   --primary-weak: #1d2f44;
-  --st-ok: #65c98c;
+  --st-ok: #5fcdbb;
   --st-late: #eeac53;
   --st-absent: #9a9eaa;
   --st-missed: #ed7473;
@@ -160,9 +159,6 @@
   --color-st-late: var(--st-late);
   --color-st-absent: var(--st-absent);
   --color-st-missed: var(--st-missed);
-  /* --st-review was the one status token with no Tailwind colour, so it was
-     reachable only through an inline style. Every other one has a --color-*. */
-  --color-st-review: var(--st-review);
   --font-sans: var(--font-jakarta);
   --font-mono: var(--font-plex-mono);
   /* docs/design-system.md §10 — the only sanctioned easing. 150ms state-only
@@ -310,6 +306,40 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   font-weight: 600;
 }
 
+/* The Cycles page's cycle picker: one long pill holding a round button per
+   cycle, so it reads as a single control rather than a row of loose chips.
+   A not-yet-started cycle is dimmed the way a disabled .nav-item is. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9999px;
+  background: var(--surface-sunk);
+}
+.segmented > * {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  transition: background-color 150ms var(--ease-out-quart), color 150ms var(--ease-out-quart);
+}
+.segmented > a:hover { color: var(--ink); background: var(--surface); }
+.segmented > [aria-current="page"],
+.segmented > [aria-current="page"]:hover {
+  background: var(--primary);
+  color: var(--surface);
+  font-weight: 600;
+}
+.segmented > [aria-disabled="true"] { opacity: 0.4; cursor: default; }
+@media (prefers-reduced-motion: reduce) {
+  .segmented > * { transition: none; }
+}
+
 /* §9 asks for one vocabulary per element. Three pages inlined
    `color: --ink; text-decoration: underline` for an in-content link. */
 .text-link {
@@ -319,6 +349,33 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
   transition: color 150ms var(--ease-out-quart);
 }
 .text-link:hover { color: var(--primary); }
+
+/* The native <dialog> element (components/ui/dialog.tsx) rather than a
+   hand-rolled overlay div -- §9's "no reinvented form controls" applies to a
+   modal exactly as it does to a disclosure: showModal() gives focus
+   trapping, Escape-to-close, and top-layer stacking for free. This resets
+   the UA default box (a bordered, padded, opaque white card) to a bare
+   positioning host; Dialog's own inner Panel carries the actual surface,
+   border, radius and padding so a dialog's content looks identical to every
+   other card in the app. The browser centres a `showModal()`'d dialog on its
+   own -- no margin/inset rules needed here for that. */
+.modal {
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  max-width: min(480px, calc(100vw - 32px));
+  width: 100%;
+  /* The UA centres a showModal()'d dialog with `margin: auto` against its
+     fixed, inset-0 box -- but Tailwind's preflight resets every element's
+     margin to 0, which silently kills that and pins the dialog to the top
+     left. Measured, not theorised: the first render of these dialogs sat in
+     the corner. Restoring `auto` here centres both axes again. */
+  margin: auto;
+}
+.modal::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
 
 /* §9: "Skeletons for loading, never a centred spinner." The pulse is a
    lightness shift between the two neutral surface tokens, so it stays a
@@ -398,6 +455,13 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 .greeting-band {
   border-radius: var(--radius-panel);
   padding: 28px 32px;
+  /* Two stops, no motion. The light end is at its ceiling: #0079ad is the
+     brightest value white text still clears 4.5:1 on, and everything on
+     this band is white text. So the only way to make the sweep actually
+     READ as a sweep is to take the dark end deeper -- #03386d against
+     white is 11.4:1, which widens the visible range without putting a
+     single word at risk. Both stops stay on --primary's own hue (253 deg),
+     so it is the logo's blue getting deeper, not a new colour. */
   background: linear-gradient(105deg, var(--greeting-from), var(--greeting-to));
   color: var(--greeting-ink);
 }

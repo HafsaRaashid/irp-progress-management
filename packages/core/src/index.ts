@@ -1,5 +1,6 @@
 export {
   addDays,
+  addMonths,
   civilDate,
   compareDates,
   dateParts,
@@ -18,12 +19,15 @@ export {
   workingDaysBetween,
 } from "./weekday.js";
 export {
-  cycleContaining,
-  cycleFor,
+  batchPhase,
+  cycleAt,
+  cycleBounds,
+  cycleCount,
   cycleWorkingDays,
-  firstEvaluatedCycleStart,
+  firstEvaluatedCycle,
   PROGRAMME_MONTHS,
-  shiftCycle,
+  type BatchPhase,
+  type BatchWindow,
   type Cycle,
   type CycleBounds,
 } from "./cycle.js";

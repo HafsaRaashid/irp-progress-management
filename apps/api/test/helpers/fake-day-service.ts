@@ -13,5 +13,6 @@ export function unusedDayService(): DayService {
   return {
     listDays: unused,
     listDaysForStudents: unused,
+    currentCycleStart: unused,
   };
 }

@@ -78,7 +78,8 @@ wanted. Weekend submissions continue to be accepted and flagged `isExtra`.
 
 **"Adds no points" was verified, not assumed.** `countCycleOutcomes` (`dashboard-service.ts:180`)
 `continue`s on a non-weekday **before** `requiredDays += 1` and before the status switch, so an
-Extra entry can never reach `settledDays`, `requiredDays` or `complianceRate`. It is tallied
+Extra entry can never reach `settledDays` or `requiredDays` (`complianceRate` existed when this was
+written and has since been removed). It is tallied
 separately as `counts.extra`, for display. The property is structural — a weekend day exits the
 loop before any scoring line runs — rather than a rule someone has to remember.
 
@@ -782,6 +783,44 @@ the repo to keep the two apart. For reference, the current repo's PRs so far: #1
 merged), #2 (Plan 8 notifications, merged), #3 (Plan 9 per-submission pivot, **closed unmerged** —
 the withdrawal the Plan 9 row describes), #4 (`refactor/review-flow-rework`, **open**).
 
+### 2026-10-08 — the Students page becomes Users, and Register comes back from Settings
+
+Branch `feat/mentor-ui-ux-improvements` (stacked on `feat/ui-ux-improvements`), first slice of a
+mentor UI/UX pass. Spec:
+`docs/superpowers/specs/2026-10-08-mentor-users-page-design.md`. ADR-0034, superseding ADR-0022's
+remaining decision (ADR-0023 had already reversed its Create-batch half). O-21 logged for the
+rename.
+
+**There was never a separate "mentor management" concept, which is why one table is the accurate
+shape and not a simplification.** Checked directly: FR-4 gives every Admin identical,
+batch-unscoped access, and `admin-actions.ts` gives a mentor account exactly the same three
+lifecycle operations (Register, Archive, Restore) a student account has. A combined table with a
+Role column, rather than a second page, is therefore the literal data model.
+
+**The table's Batch column needed a real composition, not a field that already existed.**
+`spec/openapi.yaml`'s `User` schema carries only `id`/`email`/`displayName`/`role` — no batch, no
+enrolment. Read the same way Roster already does: one `getBatchRoster` call per batch, concurrent
+(same pattern as `mentor-today.tsx`'s per-batch dashboard reads), today's roster being current
+enrolment by construction (a transfer's new batch owns the effective date onward, ADR-0017). A
+single batch's roster call failing degrades that batch's rows to "—" rather than blanking the
+whole directory.
+
+**A real jsdom-vs-Chromium gap, caught before it broke CI rather than after:** a collapsed
+`<details>` is queryable by Testing Library under jsdom (confirmed by running the unit suite with
+an assertion written the wrong way round first) but is genuinely hidden (`display: none` on
+non-`<summary>` children) in a real browser. `mentor-flows.spec.ts`'s registration test now opens
+the "+ Add student" disclosure before filling anything — unit tests alone would not have caught
+the omission.
+
+Settings is reduced to Appearance only, for every role — no remaining per-section gate, since
+nothing left on the page is mentor-only. `mentor-flows.spec.ts` and `settings.spec.ts` both
+updated for the new locations and the table-not-list markup (`tr`, not `li`).
+
+Verified: `pnpm typecheck` clean · `pnpm exec eslint .` clean · 421/421 unit tests ·
+`next build` (`AUTH_DEV_BYPASS=false`) — 11 app routes, all `ƒ`, no new errors or warnings beyond
+the pre-existing `instrumentation.ts` Edge-runtime notice. Playwright not yet re-run on this
+branch — next verification step before a PR.
+
 ### 2026-10-06 — the student surface refresh
 
 Branch `feat/ui-ux-improvements`. Eleven tasks, each its own commit. Three things worth not
@@ -843,7 +882,7 @@ maintaining both would guarantee drift.
 | # | Task | Covers |
 |---|---|---|
 | T-05 | Prisma schema: `User`, `Batch`, `Enrolment`, `Entry`, `DailyReport`, `AbsenceRecord`, `Cycle`, `Evaluation`, `Override`, `Award`. Soft-delete on students | FR-5, FR-6, FR-8 |
-| T-06 | Cycle/date engine: 10th→9th boundaries anchored to admission date, Asia/Colombo evaluation, weekday-only arithmetic, grace-window and late determination. **Unit-test this hard — it's the subtlest logic in the system** | FR-9, FR-12, FR-13, FR-14, NFR-12 |
+| T-06 | Cycle/date engine: cycles cut from the batch's own start/end dates (ADR-0035; originally fixed 10th→9th), Asia/Colombo evaluation, weekday-only arithmetic, grace-window and late determination. **Unit-test this hard — it's the subtlest logic in the system** | FR-9, FR-12, FR-13, FR-14, NFR-12 |
 | T-07 | Seed script: 2 batches, 10 students, a month of realistic entries including late and absent days | D2 |
 
 ### Phase 3 — API contract (Deliverable 2)

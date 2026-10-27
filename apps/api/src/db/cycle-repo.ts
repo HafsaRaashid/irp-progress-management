@@ -1,10 +1,4 @@
-import {
-  compareDates,
-  cycleContaining,
-  firstEvaluatedCycleStart,
-  shiftCycle,
-  type CivilDate,
-} from "@irp/core";
+import { batchPhase, cycleAt, cycleBounds, type CivilDate } from "@irp/core";
 import type { PrismaClient } from "../generated/prisma/client.js";
 import { fromDbDate, toDbDate } from "./civil-date-map.js";
 
@@ -18,11 +12,11 @@ export interface CycleRecord {
 
 export interface CycleRepo {
   /**
-   * Materialise every cycle from the batch's first evaluated cycle up to and
-   * including the one containing `through`. Idempotent: existing (batchId,
-   * seq) rows are left untouched, so an Evaluation FK can never be orphaned
-   * by a re-run. The ENGINE owns the arithmetic; these rows are its cache
-   * (spec §3).
+   * Materialise every cycle from the batch's first up to and including the
+   * one containing `through` (the last, once the batch is over; none, before
+   * it starts). Idempotent: existing (batchId, seq) rows are left untouched,
+   * so an Evaluation FK can never be orphaned by a re-run. The ENGINE owns
+   * the arithmetic; these rows are its cache (spec §3, ADR-0035).
    */
   ensureCycles(batchId: string, through: CivilDate): Promise<CycleRecord[]>;
   listForBatch(batchId: string): Promise<CycleRecord[]>;
@@ -42,29 +36,26 @@ export function createCycleRepo(prisma: PrismaClient): CycleRepo {
 
   return {
     async ensureCycles(batchId, through) {
-      const batch = await prisma.batch.findUniqueOrThrow({ where: { id: batchId } });
-      const admission = fromDbDate(batch.startDate);
-      const lastWanted = cycleContaining(through).start;
+      const row = await prisma.batch.findUniqueOrThrow({ where: { id: batchId } });
+      const batch = { startDate: fromDbDate(row.startDate), endDate: fromDbDate(row.endDate) };
+      const lastWanted = batchPhase(batch, through) === "before" ? 0 : cycleAt(batch, through).index;
 
-      let start = firstEvaluatedCycleStart(admission);
-      let seq = 1;
-      const wanted: { seq: number; start: CivilDate }[] = [];
-      while (compareDates(start, lastWanted) <= 0) {
-        wanted.push({ seq, start });
-        start = shiftCycle(start, 1);
-        seq += 1;
+      const wanted = [];
+      for (let seq = 1; seq <= lastWanted; seq += 1) {
+        // In range by the bound above, so never null.
+        wanted.push(cycleBounds(batch, seq)!);
       }
 
       await prisma.$transaction(
         wanted.map((w) =>
           prisma.cycle.upsert({
-            where: { batchId_seq: { batchId, seq: w.seq } },
+            where: { batchId_seq: { batchId, seq: w.index } },
             update: {},
             create: {
               batchId,
-              seq: w.seq,
+              seq: w.index,
               startDate: toDbDate(w.start),
-              endDate: toDbDate(cycleContaining(w.start).end),
+              endDate: toDbDate(w.end),
             },
           }),
         ),

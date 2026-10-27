@@ -6,7 +6,6 @@ import { getCurrentUserOrRedirect, apiClient } from "@/lib/api-client";
 import { PageTitle } from "@/components/ui/page-title";
 import { Panel } from "@/components/ui/panel";
 import { SectionLabel } from "@/components/ui/section-label";
-import { CountsRow } from "@/components/ui/counts-row";
 import { StatusPill } from "@/components/ui/status-pill";
 import { EmptyState } from "@/components/ui/empty-state";
 import { MentorNote } from "@/components/ui/mentor-note";
@@ -28,8 +27,8 @@ const SETTLED_STATUSES = new Set(["onTime", "late", "absent", "missed"]);
  * else — the ribbon, the outcome counts and the strengths prose live on the
  * student's home, immediately above the composer, where §8.2 places them.
  *
- * Two calls, deliberately: getMyDashboard gives the programme position and the
- * compliance rate; listMyDays gives the entry bodies for the history list. The
+ * Two calls, deliberately: getMyDashboard gives the programme position;
+ * listMyDays gives the entry bodies for the history list. The
  * dashboard is an aggregate and does not carry entry text — folding the two
  * into one call would make the mentor's identical aggregate path pay for prose
  * no mentor screen renders.
@@ -71,11 +70,6 @@ export default async function MyMonthPage({
       </div>
     );
   }
-
-  const { summary } = dashboard;
-
-  const complianceLabel =
-    summary.complianceRate === null ? "— compliance" : `${String(Math.round(summary.complianceRate * 100))}% compliance`;
 
   // listMyDays defaults to the whole current cycle -- every calendar date,
   // including weekends and days that haven't arrived yet. Rendering one
@@ -120,15 +114,11 @@ export default async function MyMonthPage({
         above the composer, and keeping a second copy here would have made this
         page a near-duplicate of it. What is left is the thing home genuinely
         cannot show: the whole cycle day by day, where home lists only the open
-        submission window. The heading and the compliance rate stay because a
-        history is unreadable without knowing which month it covers and how it
-        came out.
+        submission window. The heading stays because a history is unreadable
+        without knowing which month it covers.
       */}
       <div className="mb-6">
         <SectionLabel>{cycleHeading(dashboard)}</SectionLabel>
-        <div className="mt-2">
-          <CountsRow items={[{ tone: "ink", text: complianceLabel, strong: true }]} />
-        </div>
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -241,6 +231,19 @@ export default async function MyMonthPage({
                     <p data-testid="day-entry-body" className="prose" style={{ color: "var(--ink)" }}>
                       {entry.body}
                     </p>
+                    {/*
+                      ADR-0033: supplementary, self-reported, never scored.
+                      Omitted when null rather than shown as "not reported" --
+                      most entries never set this, so a line on every one of
+                      them would be noise to read past, not a signal.
+                      `=== undefined` alongside `=== null`, matching
+                      MentorNote's own defensive check just below.
+                    */}
+                    {entry.meetingMinutes !== null && entry.meetingMinutes !== undefined && (
+                      <p className="mt-1 text-sm" style={{ color: "var(--ink-muted)" }}>
+                        {entry.meetingMinutes} minutes in meetings
+                      </p>
+                    )}
                   </div>
                 ))}
 

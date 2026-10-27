@@ -78,7 +78,7 @@ describe("Sidebar", () => {
     }
   });
 
-  it("mentor (Admin) role: Roster, Cycles, and Students are all real links", () => {
+  it("mentor (Admin) role: Roster, Cycles, and Users are all real links", () => {
     // Task 13 added apps/web/app/(app)/roster/page.tsx, Task 15 added
     // apps/web/app/(app)/students/page.tsx, and Task 7 added
     // apps/web/app/(app)/cycles/page.tsx, so all three are real links.
@@ -96,7 +96,8 @@ describe("Sidebar", () => {
     expect(cycles).toHaveAttribute("href", "/cycles");
     expect(cycles).not.toHaveAttribute("aria-disabled");
 
-    const students = screen.getByRole("link", { name: /Students/ });
+    // Label is "Users" (ADR-0034, label-only rename); href stays /students.
+    const students = screen.getByRole("link", { name: /Users/ });
     expect(students).toHaveAttribute("href", "/students");
     expect(students).not.toHaveAttribute("aria-disabled");
   });
@@ -115,11 +116,11 @@ describe("Sidebar", () => {
   it("Student role: sees only Today and My progress -- no mentor-only destinations at all", () => {
     // Role gating hides mentor destinations entirely rather than merely
     // disabling them -- a Student should find no trace of Roster, Cycles, or
-    // Students in the DOM, even though every one of those is now a real link
+    // Users in the DOM, even though every one of those is now a real link
     // on the mentor list.
     render(<Sidebar role="Student" />);
 
-    for (const item of ["Roster", "Cycles", "Students"]) {
+    for (const item of ["Roster", "Cycles", "Users"]) {
       expect(screen.queryByText(new RegExp(item))).not.toBeInTheDocument();
     }
   });

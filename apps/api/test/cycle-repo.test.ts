@@ -29,11 +29,30 @@ describe.skipIf(!dbUrl)("createCycleRepo", () => {
     ]);
   });
 
-  it("a mid-cycle admission starts numbering at the NEXT cycle (FR-27 joining half)", async () => {
+  it("cuts cycles from the batch's own start date, not the 10th (ADR-0035)", async () => {
     const b = await batch("Mid", "2026-05-20");
-    const cycles = await repo.ensureCycles(b.id, civilDate("2026-07-15"));
-    expect(cycles[0]!.startDate).toBe("2026-06-10"); // not 10 May
-    expect(cycles[0]!.seq).toBe(1);
+    const cycles = await repo.ensureCycles(b.id, civilDate("2026-07-25"));
+    expect(cycles.map((c) => [c.seq, c.startDate, c.endDate])).toEqual([
+      [1, "2026-05-20", "2026-06-19"],
+      [2, "2026-06-20", "2026-07-19"],
+      [3, "2026-07-20", "2026-08-19"],
+    ]);
+  });
+
+  it("cuts the last cycle at the batch's end date and makes none after it", async () => {
+    const b = await prisma.batch.create({
+      data: { name: "Short", startDate: new Date("2026-05-10T00:00:00Z"), endDate: new Date("2026-06-20T00:00:00Z") },
+    });
+    const cycles = await repo.ensureCycles(b.id, civilDate("2027-01-01"));
+    expect(cycles.map((c) => [c.seq, c.startDate, c.endDate])).toEqual([
+      [1, "2026-05-10", "2026-06-09"],
+      [2, "2026-06-10", "2026-06-20"],
+    ]);
+  });
+
+  it("materialises nothing before the batch has started", async () => {
+    const b = await batch("Future", "2026-09-10");
+    expect(await repo.ensureCycles(b.id, civilDate("2026-08-01"))).toEqual([]);
   });
 
   it("is idempotent — a second call adds nothing and renumbers nothing", async () => {

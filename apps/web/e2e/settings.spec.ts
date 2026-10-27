@@ -55,10 +55,20 @@ test.describe("Settings — theme switch", () => {
     await expect(page.locator("html")).not.toHaveAttribute("data-theme", "dark");
   });
 
-  test("a student reaches Settings and gets Appearance without the mentor sections", async ({
-    page,
-  }) => {
+  test("a student reaches Settings and gets Appearance alone", async ({ page }) => {
     await signInAsStudent(page);
+    await page.goto("/settings");
+
+    await expect(page.getByRole("radio", { name: "Follow system" })).toBeVisible();
+    await expect(page.getByLabel("Role")).toHaveCount(0);
+    await expect(page.getByLabel("Batch name")).toHaveCount(0);
+  });
+
+  test("a mentor reaches Settings and gets Appearance alone too (ADR-0034)", async ({ page }) => {
+    // Register and Create batch both moved back to /students on 2026-10-08
+    // (ADR-0034, reversing ADR-0022) -- unlike before, a MENTOR's Settings
+    // page now carries no Register/Create batch section either.
+    await signInAsMentor(page);
     await page.goto("/settings");
 
     await expect(page.getByRole("radio", { name: "Follow system" })).toBeVisible();

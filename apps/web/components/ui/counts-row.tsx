@@ -25,11 +25,26 @@ const TONE = {
 
 export interface CountItem {
   tone: keyof typeof TONE;
+  /**
+   * The figure the text states, when it states one. Supplied, a ZERO drops
+   * the item to muted regardless of `tone`: "0 late" in ochre and "0 missed"
+   * in red were three coloured figures competing for attention on a page
+   * where nothing had gone wrong, which is the opposite of what the status
+   * ramp is for. A compliant month should read as one green figure among
+   * quiet ones. Optional, so a caller with no figure (or one that wants a
+   * zero coloured anyway) is unchanged.
+   */
+  count?: number;
   /** Already-composed copy — "2 late", "8 of 10 submitted". §11 wants the
    *  noun, not a bare figure, so the caller owns the wording. */
   text: string;
   testId?: string;
   strong?: boolean;
+}
+
+/** Muted when the figure is zero -- see CountItem.count. */
+function toneFor(item: CountItem): string {
+  return item.count === 0 ? TONE.muted : TONE[item.tone];
 }
 
 export function CountsRow({
@@ -47,7 +62,7 @@ export function CountsRow({
         {items.map((item, i) => (
           <Fragment key={item.text}>
             {i > 0 && " · "}
-            <span className="tabular" style={{ color: TONE[item.tone] }}>
+            <span className="tabular" style={{ color: toneFor(item) }}>
               {item.text}
             </span>
           </Fragment>
@@ -63,7 +78,7 @@ export function CountsRow({
           key={item.text}
           className={item.strong === true ? "tabular font-semibold" : "tabular"}
           data-testid={item.testId}
-          style={{ color: TONE[item.tone] }}
+          style={{ color: toneFor(item) }}
         >
           {item.text}
         </span>

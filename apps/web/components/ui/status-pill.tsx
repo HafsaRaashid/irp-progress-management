@@ -7,6 +7,16 @@
  * `extra` is deliberately rendered in `--ink-muted`, not a status colour —
  * §3.2's "Extra — distinguished by form, not colour": weekend work is not a
  * compliance state and gets no place in the four-colour ramp.
+ *
+ * ONE colour per pill (2026-10-09). The report-state suffix used to paint
+ * itself `--st-review` (an alias of --primary) while the status word beside
+ * it carried the ramp, so "On time · In review" was a green word and a blue
+ * word inside one chip, and "· Saved" was a near-black one. Two saturated
+ * colours in a 60-pixel chip read as a rendering fault, not as two facts.
+ * The outcome keeps the colour because it is the thing being scanned for;
+ * the report state is secondary and goes muted. This deviates from §3.2's
+ * "Evaluated as --ink + lock glyph" on the colour only -- the glyph stays,
+ * and --ink-muted is itself gated against every surface.
  */
 const STATUS_RENDER = {
   onTime: { glyph: "●", label: "On time", color: "var(--st-ok)" },
@@ -57,10 +67,17 @@ function LockGlyph() {
 export function StatusPill({
   status,
   reportStatus = null,
+  saved = false,
   crossfade = false,
 }: {
   status: PillStatus;
   reportStatus?: PillReportStatus;
+  /**
+   * The mentor has stored a record for this day but it is not locked
+   * (Evaluated is the locked one). Reads "· Saved" without the lock, in place
+   * of "· In review".
+   */
+  saved?: boolean;
   /**
    * §10's "review state change — 180ms crossfade on the status pill". Opt-in,
    * because the animation replays on mount and a page rendering thirty pills
@@ -88,11 +105,14 @@ export function StatusPill({
     >
       <span aria-hidden="true">{r.glyph}</span>
       {r.label}
-      {reportStatus === "InReview" && (
-        <span style={{ color: "var(--st-review)" }}>&middot; In review</span>
+      {reportStatus === "InReview" && !saved && (
+        <span style={{ color: "var(--ink-muted)" }}>&middot; In review</span>
+      )}
+      {saved && reportStatus !== "Evaluated" && (
+        <span style={{ color: "var(--ink-muted)" }}>&middot; Saved</span>
       )}
       {reportStatus === "Evaluated" && (
-        <span className="inline-flex items-center gap-1" style={{ color: "var(--ink)" }}>
+        <span className="inline-flex items-center gap-1" style={{ color: "var(--ink-muted)" }}>
           &middot; Saved <LockGlyph />
         </span>
       )}

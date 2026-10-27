@@ -1,7 +1,8 @@
 import {
-  addDays, classifyDay, compareDates,
+  addDays, classifyDay, compareDates, cycleAt,
   type CivilDate, type DayStatus,
 } from "@irp/core";
+import { currentEnrolment } from "./student-cycle.js";
 import type { AbsenceRepo, AbsenceRecordShape } from "../db/absence-repo.js";
 import type { BatchRepo, EnrolmentRecord } from "../db/batch-repo.js";
 import type { EntryRepo, EntryRecord } from "../db/entry-repo.js";
@@ -38,6 +39,14 @@ export interface DayService {
   listDaysForStudents(
     studentIds: string[], from: CivilDate, to: CivilDate, now: Date,
   ): Promise<Map<string, DayView[]>>;
+  /**
+   * Where a day list defaults to starting: the first day of the cycle
+   * containing `today` on the calendar of the batch this student follows
+   * (ADR-0035), never later than `today`. `today` itself when there is no
+   * batch to cut a cycle from (a mentor) or the batch has not started —
+   * nothing is listed before then.
+   */
+  currentCycleStart(studentId: string, today: CivilDate): Promise<CivilDate>;
 }
 
 /** Whether any of the student's enrolment intervals covers `d` (open-ended when `endDate` is null). */
@@ -66,7 +75,7 @@ function isEnrolledOn(enrolments: EnrolmentRecord[], d: CivilDate): boolean {
 export function createDayService(deps: {
   entryRepo: Pick<EntryRepo, "listEntriesForStudents" | "listReportsForStudents">;
   absenceRepo: Pick<AbsenceRepo, "listForStudents">;
-  batchRepo: Pick<BatchRepo, "listEnrolmentsForStudents">;
+  batchRepo: Pick<BatchRepo, "listEnrolmentsForStudents" | "getBatch">;
   mentorRecordRepo: Pick<MentorRecordRepo, "listForStudents">;
 }): DayService {
   /** Group rows by studentId, seeding every requested id so no key is missing. */
@@ -142,6 +151,15 @@ export function createDayService(deps: {
   }
 
   return {
+    async currentCycleStart(studentId, today) {
+      const enrolments = await deps.batchRepo.listEnrolmentsForStudents([studentId]);
+      const current = currentEnrolment(enrolments, today);
+      const batch = current === null ? null : await deps.batchRepo.getBatch(current.batchId);
+      if (batch === null) return today;
+      const { start } = cycleAt(batch, today);
+      return compareDates(start, today) > 0 ? today : start;
+    },
+
     async listDays(studentId, from, to, now) {
       const byStudent = await this.listDaysForStudents([studentId], from, to, now);
       return byStudent.get(studentId) ?? [];

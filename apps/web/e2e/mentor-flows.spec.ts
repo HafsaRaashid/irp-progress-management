@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import {
-  addDays, canSubmitFor, civilDate, compareDates, cycleContaining, dayOfWeek, toProgrammeDate,
+  addDays, addMonths, canSubmitFor, civilDate, compareDates, dateParts, dayOfWeek, toProgrammeDate,
 } from "@irp/core";
 import { SEED_BATCH_NAMES } from "@irp/fixtures";
 import {
@@ -65,7 +65,12 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await expect(page.getByText("Tharindu Weerasinghe")).toHaveCount(0);
 
     const today = toProgrammeDate(new Date());
-    const currentCycle = cycleContaining(today);
+    // Batch B (the one asserted below) starts on the most recent 10th, so its
+    // current cycle starts there too -- cycles are cut from the batch's start
+    // date (ADR-0035), which the seed places on a 10th.
+    const { year, month, day } = dateParts(today);
+    const thisTenth = civilDate(`${String(year)}-${String(month).padStart(2, "0")}-10`);
+    const currentCycle = { start: day < 10 ? addMonths(thisTenth, -1) : thisTenth };
     // Most recent Saturday on/before today (dayOfWeek: 0 Sunday ... 6 Saturday).
     const daysSinceSaturday = (dayOfWeek(today) - 6 + 7) % 7;
     const lastSaturday = addDays(today, -daysSinceSaturday);
@@ -231,9 +236,9 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await expect(openAgain.getByRole("checkbox", { name: "Attended" })).toBeChecked();
     await expect(openAgain.getByRole("checkbox", { name: "Tasks completed" })).toBeChecked();
     await expect(openAgain.getByRole("textbox")).toHaveValue("E2E open-day note");
-    // Still outstanding, and still editable -- the record saved, the day did
-    // not lock, which is the whole point of the FR-20 guard.
-    await expect(openAgain.getByText("In review")).toBeVisible();
+    // Saved but still editable -- the record stored, the day did not lock
+    // (no lock glyph, form still present), which is the FR-20 guard.
+    await expect(openAgain.getByText(/· Saved/)).toBeVisible();
 
     // ── half two: a day past its window saves AND finishes ──
     const closedPanel = dayPanelByHiddenDate(page, closedDate);
@@ -249,8 +254,7 @@ test.describe("mentor flows (dev-admin-1)", () => {
 
     // Two things moved at once on that save: the day was finished, which
     // unmounts DayRecordForm (so dayPanelByHiddenDate stops resolving,
-    // FR-20), AND it left the default "In review" filter. Switch to
-    // ?show=saved and relocate by date label.
+    // FR-20). Switch to ?show=saved and relocate by date label.
     await page.goto(`${page.url().split("?")[0]}?show=saved`);
     const lockedPanel = dayPanelByLabel(page, closedLabel);
     await expect(lockedPanel.getByText(/· Saved/)).toBeVisible();
@@ -265,10 +269,13 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await signInAsMentor(page);
     await page.goto("/students");
 
-    const chamodiListItem = page.locator("li").filter({ hasText: "Chamodi Herath" });
-    await expect(chamodiListItem).toBeVisible();
-    await chamodiListItem.getByRole("button", { name: "Archive" }).click();
-    await expect(page.locator("li").filter({ hasText: "Chamodi Herath" })).toHaveCount(0);
+    // The directory is a table row now (the mentor Users-page redesign,
+    // ADR-0034), not a bulleted <li> list.
+    const chamodiRow = page.locator("tr").filter({ hasText: "Chamodi Herath" });
+    await expect(chamodiRow).toBeVisible();
+    await chamodiRow.getByRole("button", { name: "Archive" }).click();
+    await page.getByRole("dialog", { name: "Archive Chamodi Herath" }).getByRole("button", { name: "Confirm archive" }).click();
+    await expect(page.locator("tr").filter({ hasText: "Chamodi Herath" })).toHaveCount(0);
 
     await page.goto("/students?view=archived");
     await expect(page.getByText("Chamodi Herath")).toBeVisible();
@@ -285,10 +292,16 @@ test.describe("mentor flows (dev-admin-1)", () => {
     page,
   }) => {
     await signInAsMentor(page);
-    // Register moved to /settings (ADR-0022, Task 7) -- the People directory
-    // (the <li> list Archive lives on, checked below) stayed on /students,
-    // so this test now legitimately spans both pages.
-    await page.goto("/settings");
+    // Register came back to /students (ADR-0034, 2026-10-08, reversing
+    // ADR-0022) -- the directory it populates is the same page, as a table
+    // row now rather than a bulleted <li> list.
+    await page.goto("/students");
+
+    // A modal dialog now (2026-10-09 revision, replacing the earlier
+    // <details> disclosure) -- closed by default, so the trigger has to be
+    // clicked before anything inside is fillable, same reasoning as before
+    // just a different element.
+    await page.getByRole("button", { name: "+ Register" }).click();
 
     const stamp = String(Date.now());
     const email = `e2e.throwaway.${stamp}@dev.local`;
@@ -305,13 +318,15 @@ test.describe("mentor flows (dev-admin-1)", () => {
     // start date" the same way -- both are strict-mode violations without it.
     await page.getByLabel("Batch", { exact: true }).selectOption({ label: SEED_BATCH_NAMES.B });
     await page.getByLabel("Start date", { exact: true }).fill(today);
-    await page.getByRole("button", { name: "Register" }).click();
+    // exact: true here too -- "Register" is a substring of the trigger's own
+    // "+ Register", and Playwright's default name match is substring, not
+    // exact, so without it this resolves to both buttons.
+    await page.getByRole("button", { name: "Register", exact: true }).click();
     await expect(page.getByText("Registered.")).toBeVisible();
 
-    // The People directory itself is on /students, not /settings -- confirm
-    // the new row landed there before checking the roster and archiving.
-    await page.goto("/students");
-    await expect(page.locator("li").filter({ hasText: displayName })).toBeVisible();
+    // Still on /students -- confirm the new row landed in the directory
+    // table before checking the roster and archiving.
+    await expect(page.locator("tr").filter({ hasText: displayName })).toBeVisible();
 
     await page.goto("/roster");
     await switchToBatch(page, SEED_BATCH_NAMES.B);
@@ -321,7 +336,8 @@ test.describe("mentor flows (dev-admin-1)", () => {
     // db:seed's idempotent wipe will never remove this row -- archive it in
     // this same test to keep the dev DB tidy, per the brief.
     await page.goto("/students");
-    await page.locator("li").filter({ hasText: displayName }).getByRole("button", { name: "Archive" }).click();
-    await expect(page.locator("li").filter({ hasText: displayName })).toHaveCount(0);
+    await page.locator("tr").filter({ hasText: displayName }).getByRole("button", { name: "Archive" }).click();
+    await page.getByRole("dialog", { name: `Archive ${displayName}` }).getByRole("button", { name: "Confirm archive" }).click();
+    await expect(page.locator("tr").filter({ hasText: displayName })).toHaveCount(0);
   });
 });

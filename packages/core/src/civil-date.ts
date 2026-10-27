@@ -78,6 +78,29 @@ export function addDays(date: CivilDate, days: number): CivilDate {
   return fromUtcMidnight(instant);
 }
 
+/**
+ * Shift a calendar date by whole months, keeping the day-of-month. A target
+ * month too short for that day clamps to its last day (31 Jan + 1 month is
+ * 28 Feb), so the result is always a real date.
+ *
+ * Clamping makes this non-associative: `addMonths(addMonths(d, 1), 1)` can
+ * differ from `addMonths(d, 2)`. Callers stepping through a series must
+ * always shift from the SAME anchor, never from the previous result, or the
+ * clamp compounds (31 Jan -> 28 Feb -> 28 Mar instead of 31 Mar).
+ */
+export function addMonths(date: CivilDate, months: number): CivilDate {
+  const { year, month, day } = dateParts(date);
+  const index = year * 12 + (month - 1) + months;
+  const targetYear = Math.floor(index / 12);
+  const targetMonth = index - targetYear * 12; // 0-based
+  // Day 0 of the following month is the last day of the target month.
+  const probe = new Date(0);
+  probe.setUTCFullYear(targetYear, targetMonth + 1, 0);
+  const lastDay = probe.getUTCDate();
+  probe.setUTCFullYear(targetYear, targetMonth, Math.min(day, lastDay));
+  return fromUtcMidnight(probe);
+}
+
 /** Day of week: 0 Sunday … 6 Saturday. */
 export function dayOfWeek(date: CivilDate): number {
   return toUtcMidnight(date).getUTCDay();

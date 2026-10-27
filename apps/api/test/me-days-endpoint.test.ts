@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { addDays, isWeekday, toProgrammeDate } from "@irp/core";
+import { addDays, addMonths, isWeekday, toProgrammeDate } from "@irp/core";
 import { buildTestServer } from "./helpers/build-test-server.js";
-import { resolveRange } from "../src/routes/me-days.js";
+import { createBatchRepo } from "../src/db/batch-repo.js";
 import { resetDb } from "./helpers/db.js";
 import { signToken } from "./helpers/keys.js";
 import { dbUrl } from "./helpers/require-db.js";
@@ -45,6 +45,22 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
     });
   }
 
+  /**
+   * A student in a batch that started ten days ago, so today is inside the
+   * batch's first cycle and `cycleStart` is the batch start (ADR-0035) — the
+   * default `from` the endpoint must return.
+   */
+  async function enrolledStudent(externalId: string) {
+    const s = await student(externalId);
+    const cycleStart = addDays(toProgrammeDate(new Date()), -10);
+    const repo = createBatchRepo(prisma);
+    const batch = await repo.create({
+      name: `Batch ${externalId}`, startDate: cycleStart, endDate: addDays(addMonths(cycleStart, 6), -1),
+    });
+    await repo.enrol(s.id, batch.id, cycleStart);
+    return { student: s, cycleStart };
+  }
+
   async function mentor(externalId: string) {
     return prisma.user.create({
       data: { externalId, email: `${externalId}@dev.local`, displayName: externalId, role: "ADMIN" },
@@ -82,9 +98,9 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
     expect(day.status).toBe(isWeekday(today) ? "onTime" : "extra");
   });
 
-  it("defaults to the current cycle when from/to are omitted", async () => {
-    await student("md-2");
-    const { from, to } = resolveRange();
+  it("defaults to the current cycle of the student's batch when from/to are omitted", async () => {
+    const { cycleStart: from } = await enrolledStudent("md-2");
+    const to = toProgrammeDate(new Date());
 
     const res = await app.inject({
       method: "GET",
@@ -99,7 +115,7 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
   });
 
   it("caps the default range at today, not the cycle's end — a future day has nothing to submit yet", async () => {
-    await student("md-2b");
+    await enrolledStudent("md-2b");
     const today = toProgrammeDate(new Date());
 
     const res = await app.inject({
@@ -129,8 +145,7 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
   });
 
   it("respects an explicit range narrower than the current cycle", async () => {
-    await student("md-3");
-    const { from } = resolveRange();
+    const { cycleStart: from } = await enrolledStudent("md-3");
     const to = addDays(from, 2);
 
     const res = await app.inject({
@@ -147,8 +162,7 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
   });
 
   it("accepts a 92-day span — the boundary itself, not just comfortably inside it", async () => {
-    await student("md-4a");
-    const { from } = resolveRange();
+    const { cycleStart: from } = await enrolledStudent("md-4a");
     const to = addDays(from, 91); // from..to inclusive is exactly 92 days
 
     const res = await app.inject({
@@ -163,8 +177,7 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
   });
 
   it("rejects a 93-day span with 400 range-too-wide — one day past the boundary", async () => {
-    await student("md-4b");
-    const { from } = resolveRange();
+    const { cycleStart: from } = await enrolledStudent("md-4b");
     const to = addDays(from, 92); // from..to inclusive is exactly 93 days
 
     const res = await app.inject({
@@ -180,8 +193,7 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
   });
 
   it("rejects from after to with 400 invalid-range, distinct from range-too-wide", async () => {
-    await student("md-5");
-    const { from } = resolveRange();
+    const { cycleStart: from } = await enrolledStudent("md-5");
     const to = addDays(from, -1);
 
     const res = await app.inject({
@@ -234,7 +246,8 @@ describe.skipIf(!dbUrl)("GET /api/v1/me/days", () => {
 
   it("gives a mentor a uniform 'none' list rather than 403 or 'missed' — mentors have no enrolment days", async () => {
     await mentor("md-mentor");
-    const { from, to } = resolveRange();
+    const to = toProgrammeDate(new Date());
+    const from = addDays(to, -10);
 
     const res = await app.inject({
       method: "GET",

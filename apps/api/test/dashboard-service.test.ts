@@ -311,14 +311,13 @@ describe.skipIf(!dbUrl)("createDashboardService — batchSummary", () => {
     // 08-05 (today) closes end of 08-06, neither has passed at NOW's 10:00;
     // 08-06 and 08-07 "future". Settled = 14 missed + the 3 recorded outcomes
     // (onTime/late/absent) above = 17; requiredDays = 21 (17 settled + 2
-    // pending + 2 future); complianceRate = round4(3/17) = 0.1765.
+    // pending + 2 future).
     expect(row.counts.requiredDays).toBe(21);
     expect(row.counts.missed).toBe(14);
     expect(row.counts.settledDays).toBe(17);
-    expect(row.counts.complianceRate).toBe(0.1765);
   });
 
-  it("reports complianceRate null, not zero, when no day has settled", async () => {
+  it("reports zero settled days when no day has settled", async () => {
     // A batch whose cycle has not started: every required day is future.
     const batch = await batchRepo.create({
       name: "Batch Fresh", startDate: civilDate("2026-11-10"), endDate: civilDate("2027-05-09"),
@@ -331,7 +330,6 @@ describe.skipIf(!dbUrl)("createDashboardService — batchSummary", () => {
     const view = await dashboards.batchSummary(batch.id, undefined, colomboInstant(civilDate("2026-11-10"), "09:00"));
 
     expect(view.students[0]!.counts.settledDays).toBe(0);
-    expect(view.students[0]!.counts.complianceRate).toBeNull();
   });
 
   it("counts review progress by daily-report state", async () => {
@@ -380,10 +378,10 @@ describe.skipIf(!dbUrl)("createDashboardService — batchSummary", () => {
     const view = await dashboards.batchSummary(batch.id, 1, NOW);
 
     // Independently derived (scratch tsx run against @irp/core, see the
-    // fix-wave report): firstEvaluatedCycleStart(2026-05-10) is 2026-05-10
-    // itself (admission lands exactly on the 10th), and NOW (2026-08-05)
-    // falls inside the 2026-07-10..2026-08-09 cycle -- two whole cycles
-    // later, so the batch's CURRENT cycle is its 3rd. `cycle.seq` names the
+    // fix-wave report): cycle 1 starts on the batch's own start date
+    // (2026-05-10), and NOW (2026-08-05) falls inside the
+    // 2026-07-10..2026-08-09 cycle -- two whole cycles later, so the batch's
+    // CURRENT cycle is its 3rd. `cycle.seq` names the
     // REQUESTED cycle (1); `currentSeq` must stay at the batch's actual
     // current cycle (3) regardless -- this is the bug BatchCycleSummary
     // shipped without: a picker built from `cycle.seq` alone could only ever
@@ -392,70 +390,98 @@ describe.skipIf(!dbUrl)("createDashboardService — batchSummary", () => {
     expect(view.currentSeq).toBe(3);
   });
 
-  it("rejects a cycle beyond the current one with InvalidCycleError", async () => {
+  it("rejects a cycle that does not exist, or has not started, with InvalidCycleError", async () => {
     const batch = await batchRepo.create({
       name: "Batch Seq Future", startDate: civilDate("2026-05-10"), endDate: civilDate("2027-01-09"),
     });
-    // The current cycle for NOW (2026-08-05) is the batch's 4th; 5 has not happened.
+    // 2026-05-10..2027-01-09 holds 8 cycles, so 99 does not exist; NOW
+    // (2026-08-05) is in the 3rd, so the 4th has not started.
     await expect(dashboards.batchSummary(batch.id, 99, NOW)).rejects.toBeInstanceOf(InvalidCycleError);
+    await expect(dashboards.batchSummary(batch.id, 4, NOW)).rejects.toBeInstanceOf(InvalidCycleError);
   });
 
-  // BATCH_OFF_TENTH admits on the 15th, not the 10th, so FR-27 pushes its
-  // first evaluated cycle to the FOLLOWING month: firstEvaluatedCycleStart
-  // (2026-06-15) is 2026-07-10, not 2026-06-10. BEFORE_FIRST_CYCLE is a "now"
-  // that precedes that opening, so cycleFor(today, batch.startDate) is null
-  // -- the `currentSeq === null` branch these two tests exist to exercise.
-  const BATCH_OFF_TENTH_START = civilDate("2026-06-15");
-  const BEFORE_FIRST_CYCLE = colomboInstant(civilDate("2026-06-20"), "09:00");
+  // A batch that starts on the 15th, not the 10th: its cycles run 15th to
+  // 14th (ADR-0035), cycle 1 beginning on the batch's own start date.
+  // BEFORE_START precedes the batch; DURING_FIRST is inside its first cycle.
+  const MID_MONTH_START = civilDate("2026-06-15");
+  const BEFORE_START = colomboInstant(civilDate("2026-06-10"), "09:00");
+  const DURING_FIRST = colomboInstant(civilDate("2026-06-20"), "09:00");
 
-  it("reports the CURRENT CALENDAR cycle with seq null before a batch's first evaluated cycle opens, matching batchToday (Finding 1)", async () => {
+  it("reports the batch's FIRST cycle with seq null before the batch starts, matching batchToday (Finding 1)", async () => {
     const batch = await batchRepo.create({
-      name: "Batch Off Tenth", startDate: BATCH_OFF_TENTH_START, endDate: civilDate("2027-05-09"),
+      name: "Batch Off Tenth", startDate: MID_MONTH_START, endDate: civilDate("2027-05-09"),
     });
     const s = await prisma.user.create({
       data: { externalId: "sum-off-tenth", email: "sum-off-tenth@dev.local", displayName: "Off Tenth", role: "STUDENT" },
     });
-    await batchRepo.enrol(s.id, batch.id, BATCH_OFF_TENTH_START);
+    await batchRepo.enrol(s.id, batch.id, MID_MONTH_START);
 
-    const view = await dashboards.batchSummary(batch.id, undefined, BEFORE_FIRST_CYCLE);
+    const view = await dashboards.batchSummary(batch.id, undefined, BEFORE_START);
 
-    // Before this fix, `const seq = cycleSeq ?? currentSeq ?? 1` floored the
-    // default to a fabricated Cycle 1 and reported that FUTURE cycle's bounds
-    // (2026-07-10..2026-08-09) -- disagreeing with batchToday, which
-    // correctly reports the CURRENT CALENDAR cycle with seq null for the same
-    // batch on the same day. ADR-0019 says seq is nullable in every response;
-    // this now matches batchToday exactly.
+    // ADR-0019 says seq is nullable in every response: before the batch
+    // starts there is no current cycle, so seq is null, while the bounds name
+    // the first cycle so the page has a window to show.
     expect(view.cycle.seq).toBeNull();
     expect(view.currentSeq).toBeNull();
-    expect(view.cycle.startDate).toBe(civilDate("2026-06-10"));
-    expect(view.cycle.endDate).toBe(civilDate("2026-07-09"));
+    expect(view.cycle.startDate).toBe(civilDate("2026-06-15"));
+    expect(view.cycle.endDate).toBe(civilDate("2026-07-14"));
 
-    // Independently derived (scratch tsx run against @irp/core, see the
-    // fix-wave report): of this calendar cycle's 22 weekdays, only the 19
-    // from BATCH_OFF_TENTH_START (2026-06-15) onward carry any obligation --
-    // 2026-06-10/11/12 precede the student's own enrolment and are excluded
-    // entirely, not counted as missed. Of those 19: 06-15..06-18 (4 days)
-    // are silent past grace -- missed; 06-19 is still inside grace as of
-    // BEFORE_FIRST_CYCLE (2026-06-20 09:00) -- pending; the remaining 14
-    // (06-22 onward) have not arrived yet -- future. Settled = 4 missed, so
-    // complianceRate is 0 (0 onTime+late+absent over 4 settled), NOT null --
-    // some of this window has already passed, unlike the old fabricated
-    // future-cycle bounds where nothing had.
+    // Independently derived: 2026-06-15 is a Monday, so the cycle holds
+    // 06-15..06-30 (12 weekdays) and 07-01..07-14 (10 weekdays) = 22. Nothing
+    // has arrived yet at BEFORE_START, so nothing has settled.
     const row = view.students.find((r) => r.student.id === s.id)!;
-    expect(row.counts.requiredDays).toBe(19);
-    expect(row.counts.missed).toBe(4);
-    expect(row.counts.settledDays).toBe(4);
-    expect(row.counts.complianceRate).toBe(0);
+    expect(row.counts.requiredDays).toBe(22);
+    expect(row.counts.settledDays).toBe(0);
   });
 
-  it("rejects cycle 2 with InvalidCycleError when the batch has no evaluated cycle yet", async () => {
+  it("numbers a mid-month batch's cycles from its own start date, not the 10th (ADR-0035)", async () => {
     const batch = await batchRepo.create({
-      name: "Batch Off Tenth Reject", startDate: BATCH_OFF_TENTH_START, endDate: civilDate("2027-05-09"),
+      name: "Batch Mid Month", startDate: MID_MONTH_START, endDate: civilDate("2026-12-14"),
     });
-    // currentSeq is null (no evaluated cycle yet); the guard is
+    const s = await prisma.user.create({
+      data: { externalId: "sum-mid-month", email: "sum-mid-month@dev.local", displayName: "Mid Month", role: "STUDENT" },
+    });
+    await batchRepo.enrol(s.id, batch.id, MID_MONTH_START);
+
+    const view = await dashboards.batchSummary(batch.id, undefined, DURING_FIRST);
+
+    expect(view.cycle.seq).toBe(1);
+    expect(view.currentSeq).toBe(1);
+    expect(view.cycle.startDate).toBe(civilDate("2026-06-15"));
+    expect(view.cycle.endDate).toBe(civilDate("2026-07-14"));
+
+    // Independently derived: of the 22 weekdays, 06-15..06-18 (4) are silent
+    // past grace -- missed; 06-19 is still inside grace at DURING_FIRST
+    // (2026-06-20 09:00) -- pending; the rest have not arrived.
+    const row = view.students.find((r) => r.student.id === s.id)!;
+    expect(row.counts.requiredDays).toBe(22);
+    expect(row.counts.missed).toBe(4);
+    expect(row.counts.settledDays).toBe(4);
+  });
+
+  it("cuts the last cycle at the batch's end date, and pins currentSeq to it once the batch is over", async () => {
+    const batch = await batchRepo.create({
+      name: "Batch Ends Early", startDate: MID_MONTH_START, endDate: civilDate("2026-08-01"),
+    });
+
+    // 2026-06-15..2026-08-01 holds two cycles: 06-15..07-14 and 07-15..08-01.
+    const last = await dashboards.batchSummary(batch.id, 2, NOW);
+    expect(last.cycle.startDate).toBe(civilDate("2026-07-15"));
+    expect(last.cycle.endDate).toBe(civilDate("2026-08-01"));
+    // NOW (2026-08-05) is after the batch ended: the last cycle is the current one.
+    expect(last.currentSeq).toBe(2);
+    expect((await dashboards.batchSummary(batch.id, undefined, NOW)).cycle.seq).toBe(2);
+    await expect(dashboards.batchSummary(batch.id, 3, NOW)).rejects.toBeInstanceOf(InvalidCycleError);
+  });
+
+  it("rejects cycle 2 with InvalidCycleError before the batch has started", async () => {
+    const batch = await batchRepo.create({
+      name: "Batch Off Tenth Reject", startDate: MID_MONTH_START, endDate: civilDate("2027-05-09"),
+    });
+    // currentSeq is null (the batch has not started); the guard is
     // `currentSeq === null && seq > 1`, distinct from the currentSeq-not-null
     // guard the previous test exercises.
-    await expect(dashboards.batchSummary(batch.id, 2, BEFORE_FIRST_CYCLE))
+    await expect(dashboards.batchSummary(batch.id, 2, BEFORE_START))
       .rejects.toBeInstanceOf(InvalidCycleError);
   });
 
@@ -496,18 +522,17 @@ describe.skipIf(!dbUrl)("createDashboardService — batchSummary", () => {
     // in B, are excluded). Of those 16: 07-10 and 07-20 onTime (2 entries
     // above); 07-21..08-03 (10 weekdays) missed, no entry/absence and grace
     // closed by NOW; 08-04/08-05 pending; 08-06/08-07 future. Settled =
-    // 2 onTime + 10 missed = 12; complianceRate = round4(2/12) = 0.1667.
+    // 2 onTime + 10 missed = 12.
     // Before this fix, `countCycle` trusted `day.status !== "none"` as the
     // obligation check, which is student- not batch-scoped -- the student
     // was enrolled in B throughout, so those days never read "none" and
-    // batch A's row wrongly absorbed them (requiredDays 21, missed 15,
-    // complianceRate 0.1176). A real defect, fixed alongside this test.
+    // batch A's row wrongly absorbed them (requiredDays 21, missed 15).
+    // A real defect, fixed alongside this test.
     expect(row.counts.requiredDays).toBe(16);
     expect(row.counts.settledDays).toBe(12);
     expect(row.counts.onTime).toBe(2);
     expect(row.counts.missed).toBe(10);
     expect(row.counts.pending).toBe(2);
-    expect(row.counts.complianceRate).toBe(0.1667);
   });
 
   it("throws BatchNotFoundError for an unknown batch id", async () => {
@@ -532,7 +557,7 @@ describe.skipIf(!dbUrl)("createDashboardService — studentDashboard", () => {
     await prisma.$disconnect();
   });
 
-  it("reports Month N of 6 from the student's FIRST enrolment, surviving a transfer", async () => {
+  it("follows the calendar of the batch the student is in TODAY, so a transfer moves them onto it (ADR-0035)", async () => {
     const a = await batchRepo.create({
       name: "Batch Own A", startDate: civilDate("2026-06-10"), endDate: civilDate("2026-12-09"),
     });
@@ -548,11 +573,13 @@ describe.skipIf(!dbUrl)("createDashboardService — studentDashboard", () => {
     const view = await dashboards.studentDashboard(s.id, NOW);
 
     expect(view.programmeMonths).toBe(6);
-    expect(view.firstEvaluatedCycleStart).toBe(civilDate("2026-06-10"));
-    // NOW is 2026-08-05, in the 2026-07-10..2026-08-09 cycle — the 2nd since
-    // the FIRST enrolment, not the 1st in the batch they moved to.
-    expect(view.cycle.seq).toBe(2);
+    // Admitted (2026-06-10) before batch B began, so B's cycle 1 is the first
+    // they are evaluated for. NOW is 2026-08-05, inside B's first cycle
+    // (2026-07-10..2026-08-09): Month 1 of the calendar they now follow.
+    expect(view.firstEvaluatedCycleStart).toBe(civilDate("2026-07-10"));
+    expect(view.cycle.seq).toBe(1);
     expect(view.cycle.startDate).toBe(CYCLE_START);
+    expect(view.cycle.endDate).toBe(civilDate("2026-08-09"));
 
     // Finding 4, Plan 7 whole-branch review: this fixture is exactly the
     // regression case for `countCycle(days, enrolments)` receiving the
@@ -577,6 +604,25 @@ describe.skipIf(!dbUrl)("createDashboardService — studentDashboard", () => {
     // missed + 0 onTime/late/absent = 17.
     expect(view.summary.requiredDays).toBe(21);
     expect(view.summary.settledDays).toBe(17);
+  });
+
+  it("counts a mid-cycle joiner's Month 1 from their first evaluated cycle, not the batch's cycle 1", async () => {
+    const batch = await batchRepo.create({
+      name: "Batch Own Month One", startDate: civilDate("2026-06-10"), endDate: civilDate("2026-12-09"),
+    });
+    const s = await prisma.user.create({
+      data: { externalId: "own-month-one", email: "own-month-one@dev.local", displayName: "Month One", role: "STUDENT" },
+    });
+    // Joined 2026-06-20, mid-way through the batch's cycle 1 (06-10..07-09):
+    // FR-27 skips it, so cycle 2 (07-10..08-09) is their Month 1 -- and NOW
+    // (2026-08-05) falls in it.
+    await batchRepo.enrol(s.id, batch.id, civilDate("2026-06-20"));
+
+    const view = await dashboards.studentDashboard(s.id, NOW);
+
+    expect(view.firstEvaluatedCycleStart).toBe(civilDate("2026-07-10"));
+    expect(view.cycle.seq).toBe(1);
+    expect(view.cycle.startDate).toBe(civilDate("2026-07-10"));
   });
 
   it("nulls seq for a joiner whose first evaluated cycle has not opened", async () => {
@@ -628,6 +674,5 @@ describe.skipIf(!dbUrl)("createDashboardService — studentDashboard", () => {
     expect(view.firstEvaluatedCycleStart).toBeNull();
     expect(view.cycle.seq).toBeNull();
     expect(view.summary.requiredDays).toBe(0);
-    expect(view.summary.complianceRate).toBeNull();
   });
 });

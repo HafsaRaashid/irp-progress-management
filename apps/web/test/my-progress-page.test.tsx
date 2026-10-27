@@ -28,7 +28,7 @@ const dash = (over: Record<string, unknown> = {}) => ({
   extraAfter: ["2026-07-31"],
   summary: {
     requiredDays: 22, settledDays: 17, onTime: 13, late: 2, absent: 1,
-    missed: 1, pending: 1, extra: 2, complianceRate: 0.9412,
+    missed: 1, pending: 1, extra: 2,
   },
   strengthsAndWeaknesses: null,
   ...over,
@@ -42,7 +42,7 @@ describe("MyProgressPage", () => {
     vi.clearAllMocks();
   });
 
-  it("shows which month the history covers, and how it came out", async () => {
+  it("shows which month the history covers, with no percentage rate", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
     apiClient.mockResolvedValue({});
     getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
@@ -51,7 +51,7 @@ describe("MyProgressPage", () => {
     render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText(/Month 3 of 6/)).toBeInTheDocument();
-    expect(screen.getByText(/94% compliance/)).toBeInTheDocument();
+    expect(screen.queryByText(/compliance/)).not.toBeInTheDocument();
   });
 
   it("leaves the ribbon to the student's home but now CARRIES the feedback band (ADR-0031)", async () => {
@@ -160,6 +160,44 @@ describe("MyProgressPage", () => {
     expect(screen.getByText(/· Saved/)).toBeInTheDocument();
   });
 
+  it("shows the student their own reported meeting minutes, and nothing when they never set it (ADR-0033)", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
+    apiClient.mockResolvedValue({});
+    getMyDashboard.mockResolvedValue({ data: dash(), error: undefined });
+    listMyDays.mockResolvedValue({
+      data: [
+        {
+          date: "2026-07-31", status: "onTime", reportStatus: "Evaluated", reportId: "r1",
+          absenceReason: null,
+          mentorNote: null,
+          entries: [{
+            id: "e1", entryDate: "2026-07-31", body: "Entry with a meeting.",
+            submittedAt: "2026-07-31T11:30:00.000Z", isLate: false, isExtra: false,
+            meetingMinutes: 30,
+          }],
+        },
+        {
+          date: "2026-08-03", status: "late", reportStatus: "InReview", reportId: "r2",
+          absenceReason: null,
+          mentorNote: null,
+          entries: [{
+            id: "e2", entryDate: "2026-08-03", body: "Entry with no meeting reported.",
+            submittedAt: "2026-08-04T04:10:00.000Z", isLate: true, isExtra: false,
+            meetingMinutes: null,
+          }],
+        },
+      ],
+      error: undefined,
+    });
+
+    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("30 minutes in meetings")).toBeInTheDocument();
+    // Not a "0" or an "unreported" line on the other entry -- null and zero
+    // are deliberately distinct (ADR-0033), and this is the only match.
+    expect(screen.getAllByText(/minutes in meetings/)).toHaveLength(1);
+  });
+
   it("drops future days and quiet weekends from the history, but keeps a settled day even with no entry (Finding 4)", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
     apiClient.mockResolvedValue({});
@@ -233,25 +271,6 @@ describe("MyProgressPage", () => {
     expect(screen.getByText("Nothing recorded this month yet.")).toBeInTheDocument();
   });
 
-  it("labels a null compliance rate '— compliance', not a bare dash, among the other labelled figures (Finding 6)", async () => {
-    getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
-    apiClient.mockResolvedValue({});
-    getMyDashboard.mockResolvedValue({
-      data: dash({
-        summary: {
-          requiredDays: 22, settledDays: 0, onTime: 0, late: 0, absent: 0,
-          missed: 0, pending: 0, extra: 0, complianceRate: null,
-        },
-      }),
-      error: undefined,
-    });
-    listMyDays.mockResolvedValue({ data: [], error: undefined });
-
-    render(await MyProgressPage({ searchParams: Promise.resolve({}) }));
-
-    expect(screen.getByText("— compliance")).toBeInTheDocument();
-  });
-
   it("shows the absence reason on an absent day", async () => {
     getCurrentUserOrRedirect.mockResolvedValue(STUDENT);
     apiClient.mockResolvedValue({});
@@ -302,10 +321,9 @@ describe("MyProgressPage", () => {
 
     expect(screen.getByText("Your day history could not be loaded.")).toBeInTheDocument();
     expect(screen.queryByText(/Nothing recorded this month yet./)).not.toBeInTheDocument();
-    // The dashboard heading and compliance rate still render -- only the
-    // day-history section is affected by listMyDays failing.
+    // The dashboard heading still renders -- only the day-history section is
+    // affected by listMyDays failing.
     expect(screen.getByText(/Month 3 of 6/)).toBeInTheDocument();
-    expect(screen.getByText(/94% compliance/)).toBeInTheDocument();
   });
 
   it("renders the problem detail when the dashboard call errors", async () => {

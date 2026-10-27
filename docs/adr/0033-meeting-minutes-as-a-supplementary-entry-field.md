@@ -34,7 +34,7 @@ It is scoped identically to FR-17's attendance/task notes:
   `Entry` schema the mentor's review page already reads (`toApiEntry`, shared by
   `GET /me/days` and the review listing — no second type, no second mapping), so it is visible
   wherever an entry is visible, with no separate plumbing. It is not read by `dashboard-service.ts`,
-  not part of `CycleCounts`, and not a factor in `complianceRate` or any evaluation output — the same
+  not part of `CycleCounts`, and not a factor in any settled-day figure (it once named `complianceRate`, since removed) or any evaluation output — the same
   boundary O-18 drew around scoring applies here.
 - **Null, not zero, when unreported.** A student who never touched the field reported nothing; a
   student who explicitly entered 0 said something different and true. Collapsing the two to the same

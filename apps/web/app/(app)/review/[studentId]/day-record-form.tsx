@@ -129,7 +129,9 @@ export function DayRecordForm({
       )}
       {state !== null && "ok" in state && (
         <p role="status" className="text-sm" style={{ color: "var(--st-ok)" }}>
-          {closesDay ? "Saved — day finished." : "Record saved."}
+          {closesDay
+            ? "Saved — day finished."
+            : "Saved — the day is still open to the student, so you can edit this."}
         </p>
       )}
     </form>

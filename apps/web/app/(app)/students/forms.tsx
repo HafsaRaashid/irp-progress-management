@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { SectionLabel } from "@/components/ui/section-label";
 import {
   registerUser,
@@ -72,14 +73,27 @@ export function RegisterForm({ batches }: { batches: BatchOption[] }) {
           className={FIELD_CLASS}
         />
       </label>
+      {/*
+        The one field on this form nobody can guess the meaning of. It is
+        what apps/api matches the signed-in token's `oid` claim against
+        (spec/openapi.yaml: "Entra object id (oid) of the account"), NOT the
+        person's email and NOT the User row's own id -- and getting it wrong
+        produces a row that simply 403s forever at sign-in rather than any
+        visible error at registration time.
+      */}
       <label className="flex flex-col gap-1">
         <SectionLabel>External id</SectionLabel>
         <input
           name="externalId"
           required
           aria-label="External id"
+          aria-describedby="external-id-hint"
           className={FIELD_CLASS}
         />
+        <span id="external-id-hint" className="text-xs" style={{ color: "var(--ink-muted)" }}>
+          Their Microsoft Entra object ID (Azure portal → the user&apos;s profile → Object ID).
+          Not their email.
+        </span>
       </label>
       {role === "Student" && (
         <>
@@ -161,32 +175,47 @@ export function CreateBatchForm() {
         </p>
       )}
       <div>
-        <Button type="submit" variant="quiet" loading={pending}>Create batch</Button>
+        {/* primary, not quiet (2026-10-09): this is the single confirming
+            action of its own dialog now, the same standing Register's
+            button has. They were different variants only because the two
+            forms used to sit side by side as panels, where one had to
+            recede. */}
+        <Button type="submit" loading={pending}>Create batch</Button>
       </div>
     </form>
   );
 }
 
-/** FR-8 transfer, ADR-0017's new-batch-owns-the-effective-date rule. */
+/**
+ * FR-8 transfer, ADR-0017's new-batch-owns-the-effective-date rule.
+ *
+ * `student` is fixed, not a pick-from-a-list `<select>` (revised 2026-10-09):
+ * this form only ever opens from one specific row's Transfer dialog now that
+ * the standalone shared-form entry point is gone, so a dropdown of every
+ * OTHER student was never actionable from here -- opening a different
+ * student's row is how you transfer them instead. It was also a real defect,
+ * not just redundant: a `<select>` listing every student renders every
+ * option's text into the DOM regardless of the dialog's closed, hidden
+ * state, so every row's own Transfer dialog carried every OTHER student's
+ * name too -- found when a Playwright row filter by name matched all nine
+ * seeded students at once instead of one.
+ */
 export function TransferForm({
-  students,
+  student,
   batches,
 }: {
-  students: StudentOption[];
+  student: StudentOption;
   batches: BatchOption[];
 }) {
   const [state, action, pending] = useActionState(transferStudentAction, null);
 
   return (
     <form action={action} className="flex flex-col gap-3">
-      <label className="flex flex-col gap-1">
+      <input type="hidden" name="studentId" value={student.id} />
+      <div className="flex flex-col gap-1">
         <SectionLabel>Student</SectionLabel>
-        <select name="studentId" required aria-label="Student" className={FIELD_CLASS}>
-          {students.map((s) => (
-            <option key={s.id} value={s.id}>{s.displayName} ({s.email})</option>
-          ))}
-        </select>
-      </label>
+        <p style={{ color: "var(--ink)" }}>{student.displayName} ({student.email})</p>
+      </div>
       <label className="flex flex-col gap-1">
         <SectionLabel>New batch</SectionLabel>
         <select name="toBatchId" required aria-label="New batch" className={FIELD_CLASS}>
@@ -216,7 +245,8 @@ export function TransferForm({
         </p>
       )}
       <div>
-        <Button type="submit" variant="quiet" loading={pending}>Transfer</Button>
+        {/* primary, for the same reason as Create batch above. */}
+        <Button type="submit" loading={pending}>Transfer</Button>
       </div>
     </form>
   );
@@ -227,22 +257,43 @@ export function TransferForm({
  * mirroring transition-control.tsx: `archiveUserAction.bind(null, userId)`
  * fixes the one argument the action needs, leaving the (state, formData)
  * pair useActionState supplies as ignored parameters. The API refuses
- * self-archive (and archiving a batch's last mentor) with 409 -- that
- * `detail` must reach the mentor rather than be discarded, which is why this
+ * self-archive with 409 (it does not check for a last remaining mentor) --
+ * that `detail` must reach the mentor rather than be discarded, which is why this
  * is its own client component rather than a bound plain-form action.
  */
-export function ArchiveButton({ userId }: { userId: string }) {
+export function ArchiveButton({ userId, displayName }: { userId: string; displayName: string }) {
   const [state, action, pending] = useActionState(archiveUserAction.bind(null, userId), null);
 
   return (
-    <form action={action} className="flex flex-col items-end gap-1">
-      <Button type="submit" variant="danger" loading={pending}>Archive</Button>
-      {state !== null && "error" in state && (
-        <p role="alert" className="text-sm" style={{ color: "var(--st-missed)" }}>
-          {state.error}
+    /*
+      A confirmation dialog, because one stray click on a row used to archive
+      the person outright. The row's trigger stays `quiet`, not `danger`:
+      archiving is a SOFT archive -- it sets deletedAt, destroys nothing, and
+      RestoreButton below undoes it -- and nine red outlines down one column
+      was the loudest thing on a page where nothing was wrong. The red is
+      spent once, on the confirming button inside the dialog, where the
+      mentor has already stopped to read.
+
+      On success the row leaves the list (revalidated by the action), which
+      unmounts this dialog with it; on a 409 the dialog stays open and the
+      API's detail renders inside it.
+    */
+    <Dialog triggerLabel="Archive" title={`Archive ${displayName}`}>
+      <form action={action} className="flex flex-col gap-3">
+        <p style={{ color: "var(--ink)" }}>
+          {displayName} will lose access and leave the active list. Their entries and records
+          are kept, and you can restore them from View archived.
         </p>
-      )}
-    </form>
+        {state !== null && "error" in state && (
+          <p role="alert" className="text-sm" style={{ color: "var(--st-missed)" }}>
+            {state.error}
+          </p>
+        )}
+        <div>
+          <Button type="submit" variant="danger" loading={pending}>Confirm archive</Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

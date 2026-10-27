@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PROGRAMME_MONTHS } from "@irp/core";
 import { listBatches, getBatchDashboardSummary } from "@irp/client";
 import { getCurrentUserOrRedirect, apiClient } from "@/lib/api-client";
 import { PageTitle } from "@/components/ui/page-title";
@@ -103,21 +104,37 @@ export default async function CyclesPage({
             one-way trip: selecting an earlier cycle re-rendered a picker
             that only went up to the cycle just selected, with no link back
             to the present (Finding 1, Plan 7 whole-branch review).
-            cycle.seq still drives which chip is aria-current. */}
+            cycle.seq still drives which chip is aria-current.
+
+            The bar shows the whole programme so the mentor sees how far
+            through it the batch is. A cycle past currentSeq is a dimmed span,
+            not a link: the API 400s a cycle that has not started. */}
         {data?.currentSeq != null && (
           <div>
             <SectionLabel>Cycle</SectionLabel>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {Array.from({ length: data.currentSeq }, (_, i) => i + 1).map((n) => (
-                <Link
-                  key={n}
-                  href={{ pathname: "/cycles", query: { batchId: selected.id, cycle: n } }}
-                  aria-current={n === data.cycle.seq ? "page" : undefined}
-                  className="chip tabular"
-                >
-                  Cycle {n}
-                </Link>
-              ))}
+            <div className="segmented mt-2">
+              {Array.from({ length: PROGRAMME_MONTHS }, (_, i) => i + 1).map((n) =>
+                n <= data.currentSeq! ? (
+                  <Link
+                    key={n}
+                    href={{ pathname: "/cycles", query: { batchId: selected.id, cycle: n } }}
+                    aria-current={n === data.cycle.seq ? "page" : undefined}
+                    aria-label={`Cycle ${String(n)}`}
+                    className="tabular"
+                  >
+                    {n}
+                  </Link>
+                ) : (
+                  <span
+                    key={n}
+                    aria-disabled="true"
+                    aria-label={`Cycle ${String(n)}, not started`}
+                    className="tabular"
+                  >
+                    {n}
+                  </span>
+                ),
+              )}
             </div>
           </div>
         )}
@@ -153,7 +170,6 @@ export default async function CyclesPage({
                   <Th numeric>Required</Th>
                   <Th>Outcomes</Th>
                   <Th>Extra</Th>
-                  <Th numeric>Compliance</Th>
                   <Th>Review</Th>
                   <Th>Evaluation</Th>
                 </tr>
@@ -188,13 +204,6 @@ export default async function CyclesPage({
                         §3.2, "distinguished by form, not colour". */}
                     <Td data-testid={`extra-${student.id}`} style={{ color: "var(--ink-muted)" }}>
                       <span className="tabular">{counts.extra > 0 ? `+${String(counts.extra)} extra` : "—"}</span>
-                    </Td>
-                    {/* A dash, not 0%: no settled day means no rate exists,
-                        and a zero would read as total failure. */}
-                    <Td numeric data-testid={`compliance-${student.id}`}>
-                      {counts.complianceRate === null
-                        ? "—"
-                        : `${String(Math.round(counts.complianceRate * 100))}%`}
                     </Td>
                     <Td style={{ color: "var(--ink-muted)" }}>
                       <span className="tabular">

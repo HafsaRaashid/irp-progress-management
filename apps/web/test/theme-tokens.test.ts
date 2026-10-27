@@ -173,7 +173,7 @@ describe("WCAG contrast", () => {
     ["ink-muted", "surface-sunk", 4.5, "muted copy in the dense zone"],
     // --primary is TEXT in four places — this is why it carries 4.5, not 3.
     ["primary", "bg", 4.5, ".text-link:hover on the canvas"],
-    ["primary", "surface", 4.5, "StatusPill's --st-review inside a Panel"],
+    ["primary", "surface", 4.5, "a primary-coloured link or chip inside a Panel"],
     ["primary", "primary-weak", 4.5, ".nav-item[data-active], .chip[aria-current]"],
     ["surface", "primary", 4.5, ".btn-primary label on its own fill"],
     // The status vocabulary, on every surface it is drawn on.
@@ -212,17 +212,13 @@ describe("WCAG contrast", () => {
   ];
 
   /**
-   * --st-review is rendered as TEXT (StatusPill's "· In review") but is NOT in
-   * PAIRS, because it is an ALIAS: `--st-review: var(--primary)`. It is covered
-   * transitively by every --primary pair above -- but only while it stays an
-   * alias. Give it a literal hex and it would escape the matrix entirely, since
-   * tokensIn() only parses hex and PAIRS never names it. This is what keeps that
-   * from happening silently.
+   * --st-review is GONE. It aliased --primary and had exactly one caller --
+   * StatusPill's "· In review" suffix -- which now renders --ink-muted so a
+   * pill carries ONE colour rather than a green word beside a blue one. The
+   * guard that stood here existed only to stop that alias being given a
+   * literal hex and escaping this matrix; with no token and no caller, there
+   * is nothing left to guard. --ink-muted is covered by the pairs above.
    */
-  it("keeps --st-review an alias of --primary, so the primary pairs cover it", () => {
-    expect(css).toMatch(/--st-review:\s*var\(--primary\)\s*;/);
-    expect(light["st-review"]).toBeUndefined();
-  });
 
   it("covers 32 pairs per theme", () => {
     expect(PAIRS).toHaveLength(32);
