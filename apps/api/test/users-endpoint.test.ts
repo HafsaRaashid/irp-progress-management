@@ -86,7 +86,7 @@ describe.skipIf(!dbUrl)("Users: GET/POST /api/v1/users", () => {
     expect(created?.role).toBe("ADMIN");
   });
 
-  it("registers a mentor without externalId, leaving it pending (ADR-0035)", async () => {
+  it("registers a mentor without externalId, leaving it pending (ADR-0036)", async () => {
     await mentor("users-admin-caller-1b");
 
     const res = await app.inject({

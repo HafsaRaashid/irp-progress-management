@@ -1,4 +1,4 @@
-# ADR-0035 — Just-in-time Entra oid binding by email
+# ADR-0036 — Just-in-time Entra oid binding by email
 
 - **Status:** Accepted and implemented (see Implementation status)
 - **Date:** 2026-10-12

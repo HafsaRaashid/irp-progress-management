@@ -310,7 +310,7 @@ test.describe("mentor flows (dev-admin-1)", () => {
 
     await page.getByLabel("Email").fill(email);
     await page.getByLabel("Display name").fill(displayName);
-    // No "External id" field any more (ADR-0035) -- the row registers with
+    // No "External id" field any more (ADR-0036) -- the row registers with
     // externalId left null and binds itself on first sign-in by email.
     // exact: true throughout -- getByLabel's default substring match (case-
     // insensitive) makes "Batch" match CreateBatchForm's "Batch name"/"Batch

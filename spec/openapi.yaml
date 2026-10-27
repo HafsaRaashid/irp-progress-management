@@ -1360,7 +1360,7 @@ components:
         enrolment; mentors must not carry one. externalId is the Entra object
         id (oid claim) the person will authenticate with — omit it; it binds
         itself automatically on that person's first successful sign-in,
-        matched by email (ADR-0035). Supplying it directly is only for a rare
+        matched by email (ADR-0036). Supplying it directly is only for a rare
         manual override and is not exposed in the registration UI.
       required: [email, displayName, role]
       additionalProperties: false
@@ -1371,7 +1371,7 @@ components:
           maxLength: 200
           description: |
             Entra object id (oid) of the account. Omit this — it is bound
-            automatically on first sign-in (ADR-0035). Only set it directly
+            automatically on first sign-in (ADR-0036). Only set it directly
             for a known, already-confirmed oid.
           examples:
             - 00000000-aaaa-bbbb-cccc-000000000001

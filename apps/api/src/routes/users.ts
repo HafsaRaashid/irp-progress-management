@@ -74,7 +74,7 @@ export const userRoutes: FastifyPluginAsync<{
         // Spread, not a plain key: with exactOptionalPropertyTypes, an
         // explicit `externalId: undefined` is not the same type as the key
         // being absent (same reasoning as the GET handler's `role` spread
-        // below). externalId is normally omitted entirely (ADR-0035) and
+        // below). externalId is normally omitted entirely (ADR-0036) and
         // binds itself to the real oid on first sign-in.
         ...(req.body.externalId === undefined ? {} : { externalId: req.body.externalId }),
         email: req.body.email,

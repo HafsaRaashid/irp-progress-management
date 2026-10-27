@@ -50,7 +50,7 @@ export async function registerUser(
   const { error } = await createUser({
     client,
     body: {
-      // externalId is deliberately absent (ADR-0035): it binds itself to the
+      // externalId is deliberately absent (ADR-0036): it binds itself to the
       // real Entra oid on this person's first successful sign-in, matched by
       // email. Nobody transcribes it at registration any more.
       email: formString(formData.get("email")),

@@ -176,7 +176,7 @@ docker compose -f apps/api/docker-compose.yml exec -T db psql -U irp -d irp -c "
 
 1. Register each real person by **email** through the Users page, same as a dev identity. Do
    **not** hand-transcribe their `oid` — leave `externalId` unset. It binds itself the first time
-   that person signs in successfully, matched against the registered email (ADR-0035). This
+   that person signs in successfully, matched against the registered email (ADR-0036). This
    replaces the earlier manual `UPDATE "User" SET "externalId" = '<entra-oid>'` step.
 2. Unset `AUTH_DEV_BYPASS` in `apps/web/.env.local` and the deployed config.
 3. Point `JWKS_URI` and `JWT_ISSUER` at the tenant.

@@ -31,7 +31,7 @@ describe.skipIf(!dbUrl)("createUserRepo", () => {
     expect(await repo.findByExternalId("oid-2")).toBeNull();
   });
 
-  // ADR-0035: registration no longer asks for externalId up front; it binds
+  // ADR-0036: registration no longer asks for externalId up front; it binds
   // itself to the real oid on this person's first successful sign-in,
   // matched by email.
   describe("bindExternalId", () => {

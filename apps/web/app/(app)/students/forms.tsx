@@ -74,7 +74,7 @@ export function RegisterForm({ batches }: { batches: BatchOption[] }) {
         />
       </label>
       {/*
-        No "External id" field (ADR-0035, superseding O-22's interim hint
+        No "External id" field (ADR-0036, superseding O-22's interim hint
         text). It used to be the one field on this form nobody could guess
         the meaning of -- what apps/api matches the signed-in token's `oid`
         claim against -- and a mistyped GUID produced a row that simply 403s

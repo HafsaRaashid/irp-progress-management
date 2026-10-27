@@ -9,7 +9,7 @@ function isUniqueViolation(err: unknown): boolean {
 
 export interface UserRecord {
   id: string;
-  // Null until this person's first successful sign-in (ADR-0035) — bound
+  // Null until this person's first successful sign-in (ADR-0036) — bound
   // automatically by email, never typed in at registration.
   externalId: string | null;
   email: string;
@@ -29,7 +29,7 @@ export interface UserRepo {
   // lookup's).
   findById(id: string): Promise<(UserRecord & { deletedAt: Date | null }) | null>;
   // P2002 (externalId or email unique constraint) maps to DuplicateUserError.
-  // externalId is optional (ADR-0035): registration normally omits it and
+  // externalId is optional (ADR-0036): registration normally omits it and
   // leaves the row pending until bindExternalId claims it on first sign-in.
   create(input: {
     externalId?: string;
@@ -37,7 +37,7 @@ export interface UserRepo {
     displayName: string;
     role: "ADMIN" | "STUDENT";
   }): Promise<UserRecord>;
-  // ADR-0035: on an oid miss, bind by email instead of asking a human to
+  // ADR-0036: on an oid miss, bind by email instead of asking a human to
   // transcribe externalId at registration. Matches case-insensitively (the
   // email index is defined the same way — see schema.prisma), and only ever
   // claims a row that is still pending (externalId IS NULL) and not

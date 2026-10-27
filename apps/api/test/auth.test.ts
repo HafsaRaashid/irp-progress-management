@@ -21,7 +21,7 @@ async function buildApp() {
     getKey, issuer: testIssuer, audience: testAudience,
     userRepo: fakeUserRepo([
       { id: "u1", externalId: "oid-1", email: "a@bistecglobal.com", displayName: "Amaya", role: "STUDENT" },
-      // Pending registrations (ADR-0035): externalId unset, awaiting first sign-in.
+      // Pending registrations (ADR-0036): externalId unset, awaiting first sign-in.
       { id: "u2", externalId: null, email: "pending.bind@bistecglobal.com", displayName: "Nuwan", role: "STUDENT" },
       { id: "u3", externalId: null, email: "pending.case@bistecglobal.com", displayName: "Sachini", role: "STUDENT" },
       // Already bound to a DIFFERENT oid under the same email -- models a
@@ -65,10 +65,10 @@ describe("auth", () => {
     expect(res.statusCode).toBe(403);
   });
 
-  // ADR-0035: on an oid miss, a registered-but-never-signed-in row binds to
+  // ADR-0036: on an oid miss, a registered-but-never-signed-in row binds to
   // the token's oid, matched by its email claim, instead of 403ing someone
   // an Admin already registered.
-  describe("just-in-time oid binding (ADR-0035)", () => {
+  describe("just-in-time oid binding (ADR-0036)", () => {
     it("binds a pending registration's externalId on first sign-in, by email", async () => {
       const first = await app.inject({
         method: "GET",

@@ -19,7 +19,7 @@ export function fakeUserRepo(users: UserRecord[]): UserRepo {
       const u = users.find((user) => user.id === id);
       return Promise.resolve(u ? { ...u, deletedAt: null } : null);
     },
-    // Mirrors the real repo's semantics (ADR-0035) rather than throwing: the
+    // Mirrors the real repo's semantics (ADR-0036) rather than throwing: the
     // auth plugin calls this on every findByExternalId miss, which includes
     // the "unregistered user" fixtures every existing 403 test already
     // exercises. Mutates the fixture in place, same as the real atomic

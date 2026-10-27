@@ -102,7 +102,7 @@ export const authPlugin = fp<AuthOptions>(
       }
 
       let user = await opts.userRepo.findByExternalId(oid);
-      // ADR-0035: a miss here is the common case for a legitimately
+      // ADR-0036: a miss here is the common case for a legitimately
       // registered person's FIRST sign-in — registration no longer asks an
       // Admin to supply externalId, so the row starts with it unset. Bind it
       // now, by email, rather than 403ing someone an Admin already
