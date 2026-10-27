@@ -78,7 +78,8 @@ wanted. Weekend submissions continue to be accepted and flagged `isExtra`.
 
 **"Adds no points" was verified, not assumed.** `countCycleOutcomes` (`dashboard-service.ts:180`)
 `continue`s on a non-weekday **before** `requiredDays += 1` and before the status switch, so an
-Extra entry can never reach `settledDays`, `requiredDays` or `complianceRate`. It is tallied
+Extra entry can never reach `settledDays` or `requiredDays` (`complianceRate` existed when this was
+written and has since been removed). It is tallied
 separately as `counts.extra`, for display. The property is structural — a weekend day exits the
 loop before any scoring line runs — rather than a rule someone has to remember.
 
@@ -881,7 +882,7 @@ maintaining both would guarantee drift.
 | # | Task | Covers |
 |---|---|---|
 | T-05 | Prisma schema: `User`, `Batch`, `Enrolment`, `Entry`, `DailyReport`, `AbsenceRecord`, `Cycle`, `Evaluation`, `Override`, `Award`. Soft-delete on students | FR-5, FR-6, FR-8 |
-| T-06 | Cycle/date engine: 10th→9th boundaries anchored to admission date, Asia/Colombo evaluation, weekday-only arithmetic, grace-window and late determination. **Unit-test this hard — it's the subtlest logic in the system** | FR-9, FR-12, FR-13, FR-14, NFR-12 |
+| T-06 | Cycle/date engine: cycles cut from the batch's own start/end dates (ADR-0035; originally fixed 10th→9th), Asia/Colombo evaluation, weekday-only arithmetic, grace-window and late determination. **Unit-test this hard — it's the subtlest logic in the system** | FR-9, FR-12, FR-13, FR-14, NFR-12 |
 | T-07 | Seed script: 2 batches, 10 students, a month of realistic entries including late and absent days | D2 |
 
 ### Phase 3 — API contract (Deliverable 2)

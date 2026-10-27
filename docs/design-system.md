@@ -393,12 +393,12 @@ once, in `apps/web/lib/ribbon.ts`; a page that re-derives a mark is a bug.
 ├────────────────────────────────────────────────────────────────────────┤
 │  Roster                                     Search  [        ]  Filter │
 │  ──────────────────────────────────────────────────────────────────────│
-│  Student           Today          Streak   Compliance   Index          │
-│  A. Perera         ● On time          12       96%       84.2          │
-│  N. Silva          ◐ In review         9       91%       78.5          │
-│  R. Fernando       ✕ Missed            0       74%       71.0          │
-│  S. Jayasuriya     ▲ Late              6       88%       80.1          │
-│  K. Bandara        ○ Absent            4       85%       76.8          │
+│  Student           Today          Streak   Index                         │
+│  A. Perera         ● On time          12   84.2                         │
+│  N. Silva          ◐ In review         9   78.5                         │
+│  R. Fernando       ✕ Missed            0   71.0                         │
+│  S. Jayasuriya     ▲ Late              6   80.1                         │
+│  K. Bandara        ○ Absent            4   76.8                         │
 │                                                        ↓ scrolls       │
 └────────────────────────────────────────────────────────────────────────┘
 ```

@@ -377,7 +377,7 @@ spec §7 and remove the bypass. ADR-0012.
   **case-insensitive by default**, which miscounts case-sensitive markers (e.g. `MEASURE` vs
   `measure`) unless `-CaseSensitive` is passed.
 
-**Time handling.** Store every timestamp in UTC. Evaluate every deadline, late flag, and cycle boundary in **Asia/Colombo (UTC+05:30)**. Never rely on the server's local timezone — the deploy region is not Sri Lanka. Cycles run the 10th → the 9th of the following month.
+**Time handling.** Store every timestamp in UTC. Evaluate every deadline, late flag, and cycle boundary in **Asia/Colombo (UTC+05:30)**. Never rely on the server's local timezone — the deploy region is not Sri Lanka. Cycles are cut from the batch's own start and end dates ([ADR-0035](docs/adr/0035-cycles-are-cut-from-the-batch-dates.md)): cycle 1 starts on the batch's start date, each later cycle on the same day one month on, the last is cut at the batch end.
 
 **Weekdays are required; weekends are optional extra work.** A weekday with no entry and no absence, past the grace window, is **Missed**. A weekend day can hold entries and they count as **Extra** — but a weekend is *never* missed, *never* late, and never appears in a compliance denominator. Any date arithmetic over *required* days must skip weekends; arithmetic over *recorded activity* must not.
 
@@ -417,7 +417,7 @@ Read this before writing schema or naming anything.
 | Term | Meaning |
 |---|---|
 | **Batch** | A cohort of students with its own start and end dates. Two run concurrently; calendars are independent. |
-| **Cycle** | A monthly evaluation window, 10th → 9th, anchored to the batch's admission date, in Asia/Colombo. The unit of scoring. |
+| **Cycle** | A monthly evaluation window cut from the batch's own start and end dates (ADR-0035), in Asia/Colombo: cycle 1 starts on the batch's start date, the last ends on its end date. The unit of scoring. |
 | **Entry** | One text submission by a student. Multiple entries per day are allowed. |
 | **Daily report** | All of a student's entries for one date, rolled up. The reviewable unit. |
 | **States** | `In Review → Evaluated`. A report is **born In Review** the instant a student submits — there is no earlier state and no "start review" step ([ADR-0028](docs/adr/0028-a-report-is-born-in-review.md), ASSUMPTION: O-19; FR-18 still says three, and its wording is the stakeholder's to change). There is **no Rejected state** — do not add one. |

@@ -12,14 +12,18 @@ addressing schemes were available, and the `Cycle` table already exists
 ## Decision
 
 A cycle is addressed by its **1-based sequence within the batch**, computed by
-`@irp/core` (`cycleFor(date, batch.startDate).index`, anchored on
-`firstEvaluatedCycleStart`). Bounds come from `cycleContaining`/`shiftCycle`.
-The dashboards never read or write the `Cycle` table.
+`@irp/core` (`cycleAt(batch, date).index`; bounds from `cycleBounds`). The
+dashboards never read or write the `Cycle` table.
 
-`seq` is nullable in every response: a batch whose first evaluated cycle has not
-opened yet has no sequence for today, and FR-27 says a student who joins partway
-through a cycle is not evaluated for it. `null` is the honest answer, and the UI
-renders a "starts on the 10th" state rather than a fabricated "Cycle 0".
+> **Amended by [ADR-0035](0035-cycles-are-cut-from-the-batch-dates.md):** cycles are
+> now cut from the batch's own start and end dates, not fixed 10th-to-9th
+> windows. This ADR originally named `cycleFor`/`firstEvaluatedCycleStart`/
+> `cycleContaining`/`shiftCycle`, which no longer exist.
+
+`seq` is nullable in every response: a batch that has not started yet has no
+sequence for today, and FR-27 says a student who joins partway through a cycle
+is not evaluated for it. `null` is the honest answer, and the UI renders a
+"starts on …" state rather than a fabricated "Cycle 0".
 
 ## Rejected alternatives
 

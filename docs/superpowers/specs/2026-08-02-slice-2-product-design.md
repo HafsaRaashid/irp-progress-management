@@ -7,6 +7,14 @@
 **Covers:** T-05 (full), T-07, T-08 (full), T-12, T-13, T-14, T-15
 **FRs:** FR-3, FR-5, FR-6, FR-8–FR-20, FR-28–FR-30, FR-33 · **NFRs:** NFR-7–NFR-10, NFR-13
 
+> **Updates 2026-10-21** (the text below records the original slice-2 design):
+> - Cycles are cut from each batch's own start and end dates, not fixed 10th → 9th windows;
+>   `firstEvaluatedCycleStart`/`cycleFor` became `firstEvaluatedCycle`/`cycleAt` — see
+>   [ADR-0035](../../adr/0035-cycles-are-cut-from-the-batch-dates.md). A student follows the
+>   calendar of the batch they are in today.
+> - The per-student **compliance rate** (`complianceRate`) was removed from `CycleCounts`, the
+>   Cycles page and My progress; the on time / late / absent / missed counts remain.
+
 One design document for the whole slice, three plans out of it — the Slice 1 precedent
 (`2026-07-28-slice-1-integration-skeleton-design.md`). The domain objects (`Entry`,
 `DailyReport`, day classification) are shared by every flow and both dashboards; designing

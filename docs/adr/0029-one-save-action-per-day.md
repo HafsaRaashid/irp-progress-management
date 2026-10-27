@@ -5,6 +5,14 @@ Accepted (2026-09-25). Builds on
 [ADR-0028](0028-a-report-is-born-in-review.md). Records **O-20**
 (`docs/interview-and-prd.md` §5), which FR-18/FR-20's wording depends on.
 
+> **Amended 2026-10-21 (mentor Review page).** What this ADR calls *Saved* is now wider: a day
+> counts as **Saved** once the mentor has stored a record for it, whether or not it is locked, and
+> shows "· Saved" (no lock) until it is Evaluated. Only a closed day with entries still locks (the
+> rule above is unchanged), on the save made after it closes. This also lets a missed or absent
+> day — which has no report and so can never be Evaluated — leave "In review". The page now opens
+> on **All** (chips: All · In review · Saved) so a saved day stays in place, and the open-day
+> confirmation reads "Saved — the day is still open to the student, so you can edit this."
+
 ## Context
 ADR-0028 removed the "Start review" step, leaving a day with one explicit
 mentor control, "Mark evaluated", alongside the attendance/tasks form. Two

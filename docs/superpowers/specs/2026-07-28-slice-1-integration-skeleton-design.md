@@ -6,6 +6,11 @@
 **Covers:** FR-1 (partial), FR-2 (partial), FR-9, FR-12, FR-13, FR-14, FR-15, NFR-5, NFR-6, NFR-7, NFR-8, NFR-12, NFR-14
 **Feeds deliverables:** D2 (spec + generated types), D3 (deploy + observability)
 
+> **Update 2026-10-21:** the cycle engine described below (`cycleContaining`, `cycleFor`, fixed
+> 10th → 9th windows) was replaced by batch-anchored cycles — see
+> [ADR-0035](../../adr/0035-cycles-are-cut-from-the-batch-dates.md). The text below records the
+> original slice-1 design.
+
 ---
 
 ## 1. Why this slice exists
