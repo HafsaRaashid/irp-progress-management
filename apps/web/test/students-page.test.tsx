@@ -380,10 +380,16 @@ describe("StudentsPage", () => {
 
     render(await StudentsPage({ searchParams: searchParams() }));
 
-    const archiveButtons = screen.getAllByRole("button", { name: "Archive" });
-    fireEvent.click(archiveButtons[0]!);
+    // Archive now asks first (a confirmation dialog), so opening it archives
+    // nothing; only Confirm archive calls the API.
+    const dialog = document.querySelector<HTMLDialogElement>('dialog[aria-label^="Archive "]');
+    if (dialog === null) throw new Error("No Archive confirmation dialog found");
+    expect(archiveUser).not.toHaveBeenCalled();
+    openDialog(dialog.getAttribute("aria-label")!);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm archive" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("A mentor cannot archive their own account.");
+    expect(archiveUser).toHaveBeenCalledTimes(1);
   });
 
   // Relocated from settings-page.test.tsx by Task 7 (ADR-0023): CreateBatchForm

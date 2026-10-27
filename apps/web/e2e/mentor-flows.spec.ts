@@ -269,6 +269,7 @@ test.describe("mentor flows (dev-admin-1)", () => {
     const chamodiRow = page.locator("tr").filter({ hasText: "Chamodi Herath" });
     await expect(chamodiRow).toBeVisible();
     await chamodiRow.getByRole("button", { name: "Archive" }).click();
+    await page.getByRole("dialog", { name: "Archive Chamodi Herath" }).getByRole("button", { name: "Confirm archive" }).click();
     await expect(page.locator("tr").filter({ hasText: "Chamodi Herath" })).toHaveCount(0);
 
     await page.goto("/students?view=archived");
@@ -331,6 +332,7 @@ test.describe("mentor flows (dev-admin-1)", () => {
     // this same test to keep the dev DB tidy, per the brief.
     await page.goto("/students");
     await page.locator("tr").filter({ hasText: displayName }).getByRole("button", { name: "Archive" }).click();
+    await page.getByRole("dialog", { name: `Archive ${displayName}` }).getByRole("button", { name: "Confirm archive" }).click();
     await expect(page.locator("tr").filter({ hasText: displayName })).toHaveCount(0);
   });
 });

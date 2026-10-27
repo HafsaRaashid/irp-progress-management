@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { SectionLabel } from "@/components/ui/section-label";
 import {
   registerUser,
@@ -256,30 +257,43 @@ export function TransferForm({
  * mirroring transition-control.tsx: `archiveUserAction.bind(null, userId)`
  * fixes the one argument the action needs, leaving the (state, formData)
  * pair useActionState supplies as ignored parameters. The API refuses
- * self-archive (and archiving a batch's last mentor) with 409 -- that
- * `detail` must reach the mentor rather than be discarded, which is why this
+ * self-archive with 409 (it does not check for a last remaining mentor) --
+ * that `detail` must reach the mentor rather than be discarded, which is why this
  * is its own client component rather than a bound plain-form action.
  */
-export function ArchiveButton({ userId }: { userId: string }) {
+export function ArchiveButton({ userId, displayName }: { userId: string; displayName: string }) {
   const [state, action, pending] = useActionState(archiveUserAction.bind(null, userId), null);
 
   return (
-    <form action={action} className="flex flex-col items-end gap-1">
-      {/*
-        `quiet`, not `danger`. Archiving is a SOFT archive -- it sets
-        deletedAt, destroys nothing, and RestoreButton below undoes it in one
-        click (which is exactly why Restore exists). Red is for the
-        irreversible, and spending it here meant a directory of nine students
-        rendered nine red outlines down one column: the loudest thing on a
-        page where nothing was wrong.
-      */}
-      <Button type="submit" variant="quiet" loading={pending}>Archive</Button>
-      {state !== null && "error" in state && (
-        <p role="alert" className="text-sm" style={{ color: "var(--st-missed)" }}>
-          {state.error}
+    /*
+      A confirmation dialog, because one stray click on a row used to archive
+      the person outright. The row's trigger stays `quiet`, not `danger`:
+      archiving is a SOFT archive -- it sets deletedAt, destroys nothing, and
+      RestoreButton below undoes it -- and nine red outlines down one column
+      was the loudest thing on a page where nothing was wrong. The red is
+      spent once, on the confirming button inside the dialog, where the
+      mentor has already stopped to read.
+
+      On success the row leaves the list (revalidated by the action), which
+      unmounts this dialog with it; on a 409 the dialog stays open and the
+      API's detail renders inside it.
+    */
+    <Dialog triggerLabel="Archive" title={`Archive ${displayName}`}>
+      <form action={action} className="flex flex-col gap-3">
+        <p style={{ color: "var(--ink)" }}>
+          {displayName} will lose access and leave the active list. Their entries and records
+          are kept, and you can restore them from View archived.
         </p>
-      )}
-    </form>
+        {state !== null && "error" in state && (
+          <p role="alert" className="text-sm" style={{ color: "var(--st-missed)" }}>
+            {state.error}
+          </p>
+        )}
+        <div>
+          <Button type="submit" variant="danger" loading={pending}>Confirm archive</Button>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

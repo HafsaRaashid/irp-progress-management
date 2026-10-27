@@ -330,7 +330,7 @@ export default async function StudentsPage({
                       {isSelf ? (
                         <span className="text-sm" style={{ color: "var(--ink-muted)" }}>—</span>
                       ) : (
-                        <ArchiveButton userId={u.id} />
+                        <ArchiveButton userId={u.id} displayName={u.displayName} />
                       )}
                     </div>
                   </Td>
