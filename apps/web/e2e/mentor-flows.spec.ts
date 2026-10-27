@@ -231,9 +231,9 @@ test.describe("mentor flows (dev-admin-1)", () => {
     await expect(openAgain.getByRole("checkbox", { name: "Attended" })).toBeChecked();
     await expect(openAgain.getByRole("checkbox", { name: "Tasks completed" })).toBeChecked();
     await expect(openAgain.getByRole("textbox")).toHaveValue("E2E open-day note");
-    // Still outstanding, and still editable -- the record saved, the day did
-    // not lock, which is the whole point of the FR-20 guard.
-    await expect(openAgain.getByText("In review")).toBeVisible();
+    // Saved but still editable -- the record stored, the day did not lock
+    // (no lock glyph, form still present), which is the FR-20 guard.
+    await expect(openAgain.getByText(/· Saved/)).toBeVisible();
 
     // ── half two: a day past its window saves AND finishes ──
     const closedPanel = dayPanelByHiddenDate(page, closedDate);
@@ -249,8 +249,7 @@ test.describe("mentor flows (dev-admin-1)", () => {
 
     // Two things moved at once on that save: the day was finished, which
     // unmounts DayRecordForm (so dayPanelByHiddenDate stops resolving,
-    // FR-20), AND it left the default "In review" filter. Switch to
-    // ?show=saved and relocate by date label.
+    // FR-20). Switch to ?show=saved and relocate by date label.
     await page.goto(`${page.url().split("?")[0]}?show=saved`);
     const lockedPanel = dayPanelByLabel(page, closedLabel);
     await expect(lockedPanel.getByText(/· Saved/)).toBeVisible();

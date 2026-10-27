@@ -33,9 +33,9 @@ type Filter = "open" | "saved" | "all";
  * chip happens to be active.
  */
 const FILTERS: readonly { key: Filter; label: string }[] = [
+  { key: "all", label: "All" },
   { key: "open", label: "In review" },
   { key: "saved", label: "Saved" },
-  { key: "all", label: "All" },
 ];
 
 /**
@@ -69,7 +69,7 @@ export default async function StudentReviewPage({
   // showing everything: a mistyped query string should degrade to the
   // default view, not to a wall of already-finished days.
   const { show } = await searchParams;
-  const filter: Filter = show === "saved" || show === "all" ? show : "open";
+  const filter: Filter = show === "saved" || show === "open" ? show : "all";
   const client = await apiClient();
 
   // No per-id user-lookup endpoint exists -- GET /api/v1/users is the only
@@ -152,8 +152,18 @@ export default async function StudentReviewPage({
   // These two are computed unconditionally, not just for the active filter,
   // because the chips show live counts -- "Evaluated 12" has to be right
   // even while looking at Needs review.
-  const openDays = orderedDays.filter((d) => d.reportStatus !== "Evaluated");
-  const savedDays = orderedDays.filter((d) => d.reportStatus === "Evaluated");
+  //
+  // "Saved" means the mentor has stored a record for the day, or the day is
+  // Evaluated. A missed or absent day has no report and so can never reach
+  // Evaluated -- before this it sat under "In review" forever and inflated the
+  // count; and an open day saved before its window closed looked as if Save
+  // had done nothing. Only Evaluated is locked (FR-20): a day that is merely
+  // recorded keeps its form and can be saved again, and the save after the
+  // day closes is the one that finishes it.
+  const isSaved = (d: (typeof orderedDays)[number]) =>
+    d.reportStatus === "Evaluated" || recordsByDate?.has(d.date) === true;
+  const openDays = orderedDays.filter((d) => !isSaved(d));
+  const savedDays = orderedDays.filter(isSaved);
   const shown = filter === "open" ? openDays : filter === "saved" ? savedDays : orderedDays;
 
   function renderDay(day: (typeof orderedDays)[number]) {
@@ -191,9 +201,10 @@ export default async function StudentReviewPage({
             // it — §10's "180ms crossfade on the status pill" is an
             // animation, and an animation only replays on mount.
             <StatusPill
-              key={`${day.status}-${String(day.reportStatus)}`}
+              key={`${day.status}-${String(day.reportStatus)}-${String(isSaved(day))}`}
               status={day.status}
               reportStatus={day.reportStatus}
+              saved={isSaved(day)}
               crossfade
             />
           )
@@ -324,7 +335,7 @@ export default async function StudentReviewPage({
                   // page as the default chip, or the chip would look
                   // unselected on arrival.
                   href={
-                    key === "open"
+                    key === "all"
                       ? { pathname: `/review/${studentId}` }
                       : { pathname: `/review/${studentId}`, query: { show: key } }
                   }

@@ -173,10 +173,10 @@ describe("StudentReviewPage", () => {
     });
   }
 
-  it("defaults to the In review filter, hiding finished days entirely", async () => {
+  it("shows only days still awaiting review under ?show=open, hiding finished days entirely", async () => {
     threeDaysMixed();
 
-    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams("open") }));
 
     expect(screen.getByText("Tuesday 28 July")).toBeInTheDocument();
     // Absent, not merely ordered after. That is the point of the filter: a
@@ -204,13 +204,14 @@ describe("StudentReviewPage", () => {
     expect(headings).toEqual(["Wednesday 29 July", "Tuesday 28 July", "Monday 27 July"]);
   });
 
-  it("falls back to the In review filter for an unrecognised ?show=", async () => {
+  it("defaults to All, and falls back to it for an unrecognised ?show=, so a saved day stays in place", async () => {
     threeDaysMixed();
 
     render(await StudentReviewPage({ params: params(), searchParams: searchParams("nonsense") }));
 
     expect(screen.getByText("Tuesday 28 July")).toBeInTheDocument();
-    expect(screen.queryByText("Wednesday 29 July")).not.toBeInTheDocument();
+    expect(screen.getByText("Wednesday 29 July")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All" })).toHaveAttribute("aria-current", "page");
   });
 
   it("renders the day titles as real headings so the list can be skimmed", async () => {
@@ -237,8 +238,40 @@ describe("StudentReviewPage", () => {
     // be right for groups that are off screen -- a "1 saved" that only
     // became correct once you clicked Saved would defeat the point.
     expect(screen.getByText(/in review/)).toHaveTextContent("1 in review · 2 saved · 3 days this cycle");
-    expect(screen.getByRole("link", { name: "In review" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "All" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Saved" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("counts any day with a stored record as saved, and keeps it editable and in place", async () => {
+    getCurrentUserOrRedirect.mockResolvedValue(ADMIN_USER);
+    apiClient.mockResolvedValue({});
+    listUsers.mockResolvedValue({ data: [STUDENT], error: undefined });
+    // Only the 27th and 28th have a stored record; the 29th is missed with
+    // none, so it must stay outstanding.
+    listDayRecords.mockResolvedValue({
+      data: [
+        { date: "2026-07-27", attended: false, tasksCompleted: false, note: null },
+        { date: "2026-07-28", attended: false, tasksCompleted: false, note: null },
+      ],
+      error: undefined,
+    });
+    listStudentDays.mockResolvedValue({
+      data: [
+        { date: "2026-07-27", status: "missed", reportStatus: null, reportId: null, absenceReason: null, entries: [] },
+        { date: "2026-07-28", status: "absent", reportStatus: null, reportId: null, absenceReason: "ill", entries: [] },
+        { date: "2026-07-29", status: "missed", reportStatus: null, reportId: null, absenceReason: null, entries: [] },
+      ],
+      error: undefined,
+    });
+
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
+
+    expect(screen.getByText(/in review/)).toHaveTextContent("1 in review · 2 saved · 3 days this cycle");
+    // Default view is All: the recorded days are still on the page, with the
+    // form to edit them, rather than vanishing from the list on save.
+    expect(screen.getByText("Monday 27 July")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Save record" })).toHaveLength(3);
+    expect(screen.getAllByText(/· Saved/)).toHaveLength(2);
   });
 
   it("drops an empty weekend day, and keeps one that holds an Extra entry", async () => {
@@ -285,7 +318,7 @@ describe("StudentReviewPage", () => {
       error: undefined,
     });
 
-    render(await StudentReviewPage({ params: params(), searchParams: searchParams() }));
+    render(await StudentReviewPage({ params: params(), searchParams: searchParams("open") }));
 
     expect(screen.getByText("Nothing left to review for this cycle.")).toBeInTheDocument();
   });
@@ -418,7 +451,7 @@ describe("StudentReviewPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save record" }));
     // "Record saved.", not "Saved — day finished." -- and no transition
     // attempted at all, which is the real assertion here.
-    await screen.findByText("Record saved.");
+    await screen.findByText(/Saved — the day is still open/);
     expect(transitionDailyReport).not.toHaveBeenCalled();
   });
 

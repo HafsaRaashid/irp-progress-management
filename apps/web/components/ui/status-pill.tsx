@@ -67,10 +67,17 @@ function LockGlyph() {
 export function StatusPill({
   status,
   reportStatus = null,
+  saved = false,
   crossfade = false,
 }: {
   status: PillStatus;
   reportStatus?: PillReportStatus;
+  /**
+   * The mentor has stored a record for this day but it is not locked
+   * (Evaluated is the locked one). Reads "· Saved" without the lock, in place
+   * of "· In review".
+   */
+  saved?: boolean;
   /**
    * §10's "review state change — 180ms crossfade on the status pill". Opt-in,
    * because the animation replays on mount and a page rendering thirty pills
@@ -98,8 +105,11 @@ export function StatusPill({
     >
       <span aria-hidden="true">{r.glyph}</span>
       {r.label}
-      {reportStatus === "InReview" && (
+      {reportStatus === "InReview" && !saved && (
         <span style={{ color: "var(--ink-muted)" }}>&middot; In review</span>
+      )}
+      {saved && reportStatus !== "Evaluated" && (
+        <span style={{ color: "var(--ink-muted)" }}>&middot; Saved</span>
       )}
       {reportStatus === "Evaluated" && (
         <span className="inline-flex items-center gap-1" style={{ color: "var(--ink-muted)" }}>
