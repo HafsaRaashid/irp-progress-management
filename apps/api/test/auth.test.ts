@@ -1,3 +1,4 @@
+import { Writable } from "node:stream";
 import { describe, it, expect, beforeAll } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { JWTVerifyGetKey } from "jose";
@@ -13,8 +14,8 @@ interface ProtectedResponse { email: string; }
 let getKey: JWTVerifyGetKey;
 beforeAll(async () => { getKey = await getLocalKeySet(); });
 
-async function buildApp() {
-  const app = Fastify();
+async function buildApp(logStream?: Writable) {
+  const app = Fastify(logStream === undefined ? {} : { logger: { level: "warn", stream: logStream } });
   await app.register(tracingPlugin, { tracerProvider: createTracerProvider(new InMemorySpanExporter()) });
   await app.register(problemDetailsPlugin);
   await app.register(authPlugin, {
@@ -129,6 +130,66 @@ describe("auth", () => {
         headers: bearer(await signToken({ oid: "later-oid", email: "pending.noemail@bistecglobal.com" })),
       });
       expect(second.statusCode).toBe(200);
+    });
+  });
+
+  // A missing email claim is the likeliest Entra misconfiguration at cutover
+  // (the optional claim is not on the access token by default) and it looks
+  // identical to "nobody is registered" -- a plain 403. The log is the only
+  // place the real cause can surface.
+  describe("missing email claim is logged (ADR-0036)", () => {
+    function captureLogs() {
+      const lines: string[] = [];
+      const stream = new Writable({
+        write(chunk: Buffer, _enc, done) {
+          lines.push(chunk.toString());
+          done();
+        },
+      });
+      return { lines, stream };
+    }
+
+    it("warns when an unknown oid arrives with no email claim, without logging any email", async () => {
+      const { lines, stream } = captureLogs();
+      const logged = await buildApp(stream);
+      const res = await logged.inject({
+        method: "GET",
+        url: "/protected",
+        headers: bearer(await signToken({ oid: "no-email-warn-oid" })),
+      });
+      expect(res.statusCode).toBe(403);
+
+      const warning = lines.find((l) => l.includes("no email claim"));
+      expect(warning).toBeDefined();
+      expect(warning).toContain("no-email-warn-oid");
+      expect(warning).not.toContain("@");
+      await logged.close();
+    });
+
+    it("does not warn when the email claim is present, even if it matches nothing", async () => {
+      const { lines, stream } = captureLogs();
+      const logged = await buildApp(stream);
+      const res = await logged.inject({
+        method: "GET",
+        url: "/protected",
+        headers: bearer(await signToken({ oid: "unmatched-oid", email: "nobody@bistecglobal.com" })),
+      });
+      expect(res.statusCode).toBe(403);
+      expect(lines.some((l) => l.includes("no email claim"))).toBe(false);
+      await logged.close();
+    });
+
+    it("does not warn for a known oid, which never reaches the bind path", async () => {
+      const { lines, stream } = captureLogs();
+      const logged = await buildApp(stream);
+      const res = await logged.inject({
+        method: "GET",
+        url: "/protected",
+        headers: bearer(await signToken({ oid: "oid-1" })),
+      });
+      expect(res.statusCode).toBe(200);
+      expect(lines.some((l) => l.includes("no email claim"))).toBe(false);
+      await logged.close();
     });
   });
 });

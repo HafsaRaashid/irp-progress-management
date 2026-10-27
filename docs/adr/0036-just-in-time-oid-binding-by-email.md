@@ -85,10 +85,17 @@ After the existing signature/issuer/audience/expiry verification (unchanged) and
    `email`, or a row matched but already holds a different `externalId` — fall through to the
    existing `ForbiddenError` (spec §7 is unchanged: valid token, no usable record, 403).
 
-The `email` claim is already present on every token this system issues: the dev provider signs
-`{ oid, email, name }` (`apps/web/lib/dev-identity.ts:123`), and the web app's Entra provider
-requests the `email` scope explicitly (`auth.config.ts:144`), matching the shape auth.ts already
-expects.
+The dev provider signs `{ oid, email, name }` (`apps/web/lib/dev-identity.ts:123`), so the
+`email` claim is present on every dev token. **For Entra it is not guaranteed, and this is
+unverified until a real token has been inspected.** The API validates the *access token* issued
+for `API_SCOPE` (`api-client.ts` forwards `account.access_token`), not the ID token. The `email`
+scope the web provider requests (`auth.config.ts:144`) shapes the ID token; an access token for a
+custom API carries `email` only if it is added as an **optional claim** on the API's app
+registration (Token configuration → Add optional claim → Access → `email`). Without it the bind
+step sees no email, falls through, and the person gets the same 403 as before — so the cutover
+runbook (`docs/manual-setup-steps.md` §1.3b) makes that step explicit. The auth plugin also logs a
+warning (with the `oid`, never an email) whenever an unknown `oid` arrives with no `email` claim,
+so that misconfiguration is distinguishable from "nobody is registered".
 
 ### Registration (`POST /api/v1/users`, `spec/openapi.yaml`'s `UserCreate`)
 

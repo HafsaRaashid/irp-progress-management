@@ -178,6 +178,11 @@ docker compose -f apps/api/docker-compose.yml exec -T db psql -U irp -d irp -c "
    **not** hand-transcribe their `oid` — leave `externalId` unset. It binds itself the first time
    that person signs in successfully, matched against the registered email (ADR-0036). This
    replaces the earlier manual `UPDATE "User" SET "externalId" = '<entra-oid>'` step.
+   **Prerequisite:** the bind matches the token's `email` claim, and the API validates the
+   *access token*, which does not carry `email` by default. On the API's app registration, add it
+   under Token configuration → Add optional claim → Access → `email`. Then sign in once with a
+   registered account and confirm the person lands in the app rather than on `/not-registered`;
+   if they do not, decode the access token and check whether `email` is present.
 2. Unset `AUTH_DEV_BYPASS` in `apps/web/.env.local` and the deployed config.
 3. Point `JWKS_URI` and `JWT_ISSUER` at the tenant.
 4. Set the three web-side variables `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET`,

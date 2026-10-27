@@ -111,6 +111,18 @@ export const authPlugin = fp<AuthOptions>(
       if (!user) {
         if (typeof email === "string" && email.length > 0) {
           user = await opts.userRepo.bindExternalId(email, oid);
+        } else {
+          // Without an email claim the bind cannot even be attempted, and the
+          // caller gets the same opaque 403 as an unregistered person. For
+          // Entra that is most likely a missing `email` optional claim on the
+          // API's app registration (an access token does not carry it by
+          // default), so say so in the log -- otherwise a cutover where
+          // everyone is 403'd reads as "nobody is registered". The email
+          // itself is not logged; there is none to log.
+          req.log.warn(
+            { oid },
+            "token has no email claim, so a pending registration cannot be bound by email; check the API app registration's optional claims (ADR-0036)",
+          );
         }
       }
       if (!user) throw new ForbiddenError(); // spec §7: valid token, no record → 403
